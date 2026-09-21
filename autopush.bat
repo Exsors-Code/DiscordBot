@@ -8,3 +8,4 @@ if %errorlevel%==0 (
 git commit -m "Exs - %date% %time%"
 git push
 exit /b 0
+// r
