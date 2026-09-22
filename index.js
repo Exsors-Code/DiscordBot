@@ -28,16 +28,10 @@ process.on('uncaughtException', (error) => {
 });
 
 const LEADERBOARD_UPDATE_INTERVAL = 10000;
-
-const EVENT_ROLE_IDS = [
-    '1408101505008926840'
-];
+const EVENT_ROLE_IDS = ['1408101505008926840'];
 
 const UNLIMITED_BLOCKS = ['dirt'];
-
-function isUnlimited(blockKey) {
-    return UNLIMITED_BLOCKS.includes(blockKey);
-}
+function isUnlimited(blockKey) { return UNLIMITED_BLOCKS.includes(blockKey); }
 
 const BASE_AUTO_INTERVAL = 5000;
 const AUTO_INTERVAL_REDUCTION = 200;
@@ -65,7 +59,7 @@ const SHOP_TOOLS = {
     gray: { name: 'GRAY', price: 10000000, multiplier: 250, invBonus: 20000, blocksPerBreak: 15, emoji: '🌟' }
 };
 const SHOP_BLOCKS = {
-    dirt: { name: 'Dirt',        price: 100,  gemsMin: 1,  gemsMax: 5,   xpMin: 1,  xpMax: 5,   emoji: '🟫', desc: 'Block murah, reward kecil (UNLIMITED)' },
+    dirt: { name: 'Dirt',        price: 100,  gemsMin: 1,  gemsMax: 5,   xpMin: 1,  xpMax: 5,   emoji: '🟫', desc: 'Block murah (UNLIMITED)' },
     pog:  { name: "Pot O' Gems", price: 5000, gemsMin: 85, gemsMax: 100, xpMin: 85, xpMax: 100, emoji: '🥔', desc: 'Block OP, reward besar' }
 };
 const SHOP_ITEMS = {
@@ -97,7 +91,6 @@ const guildLeaderboards = new Map();
 const guildMemberCache = new Map();
 const guildMemberCacheTime = new Map();
 const MEMBER_CACHE_TTL = 5 * 60 * 1000;
-
 const userLastInteraction = new Map();
 const INTERACTION_LOCK_MS = 1500;
 
@@ -280,7 +273,7 @@ function shopBlocksEmbed(ud) {
     const lines = ['**BELI BLOCK**', ''];
     for (const key in SHOP_BLOCKS) {
         const b = SHOP_BLOCKS[key];
-        const unlimitedTag = isUnlimited(key) ? ' ♾️ **(Unlimited — tidak perlu dibeli)**' : '';
+        const unlimitedTag = isUnlimited(key) ? ' ♾️ **(Unlimited)**' : '';
         lines.push(
             `${b.emoji} **${b.name}**${unlimitedTag}\n` +
             `> Reward: **${b.gemsMin}-${b.gemsMax}** | **${b.xpMin}-${b.xpMax} XP**\n` +
@@ -665,11 +658,15 @@ function formatBreakLog(result, prefix = 'Auto') {
 }
 
 // ==========================================
-// ⚡ AUTO FARM — FIXED with re-check before edit
+// ⚡ AUTO FARM
 // ==========================================
 function startAutoFarm(userId) {
+    // Hancurkan interval lama
     const existingId = autoFarmIntervals.get(userId);
-    if (existingId) { clearInterval(existingId); autoFarmIntervals.delete(userId); }
+    if (existingId) { 
+        clearInterval(existingId); 
+        autoFarmIntervals.delete(userId); 
+    }
 
     const ud0 = userCache.get(userId);
     if (!ud0) return;
@@ -679,14 +676,20 @@ function startAutoFarm(userId) {
     autoFarmTokens.set(userId, myToken);
 
     const intervalId = setInterval(async () => {
-        // === CHECK 1: TOKEN ===
+        // ⚡ CHECK 1: Token berubah → stop
         if (autoFarmTokens.get(userId) !== myToken) {
             clearInterval(intervalId);
             if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
             return;
         }
 
-        // === CHECK 2: FLAG ===
+        // ⚡ CHECK 2: Interval map bukan punya kita → stop
+        if (autoFarmIntervals.get(userId) !== intervalId) {
+            clearInterval(intervalId);
+            return;
+        }
+
+        // ⚡ CHECK 3: Flag autoFarm false → stop
         const ud = userCache.get(userId);
         if (!ud || ud.autoFarm !== true) {
             clearInterval(intervalId);
@@ -697,19 +700,20 @@ function startAutoFarm(userId) {
         const lastInteract = userLastInteraction.get(userId) || 0;
         const isUserLocked = (Date.now() - lastInteract) < INTERACTION_LOCK_MS;
 
+        // Skip doBreak juga kalau user locked (biar tidak ada resource nambah)
+        if (isUserLocked) return;
+
         const result = doBreak(ud);
         if (result && !result.switched) ud.lastBreak = formatBreakLog(result, 'Auto');
 
-        // === CHECK 3: BLOCK HABIS ===
+        // ⚡ CHECK 4: Block habis → stop
         if (ud.autoFarm === false) {
             autoFarmTokens.set(userId, (autoFarmTokens.get(userId) || 0) + 1);
             clearInterval(intervalId);
             if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
             db.saveUser(ud);
-            if (!isUserLocked) {
-                const m = activeMessages.get(userId);
-                if (m) { try { await m.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); } catch {} }
-            }
+            const m = activeMessages.get(userId);
+            if (m) { try { await m.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); } catch {} }
             return;
         }
 
@@ -718,12 +722,9 @@ function startAutoFarm(userId) {
             ud._lastSave = Date.now();
         }
 
-        // === CHECK 4: USER LOCK ===
-        if (isUserLocked) return;
-
-        // === CHECK 5: RE-CHECK SEBELUM EDIT (FIX BUG) ===
-        // Kalau user klik stop/start lain sejak tick ini mulai, batalkan edit.
+        // ⚡ CHECK 5: RE-CHECK SEBELUM EDIT
         if (autoFarmTokens.get(userId) !== myToken) return;
+        if (autoFarmIntervals.get(userId) !== intervalId) return;
         if (ud.autoFarm !== true) return;
 
         const msg = activeMessages.get(userId);
@@ -741,10 +742,14 @@ function startAutoFarm(userId) {
 
     autoFarmIntervals.set(userId, intervalId);
 }
+
 function stopAutoFarm(userId) {
     autoFarmTokens.set(userId, (autoFarmTokens.get(userId) || 0) + 1);
     const id = autoFarmIntervals.get(userId);
-    if (id) { clearInterval(id); autoFarmIntervals.delete(userId); }
+    if (id) { 
+        clearInterval(id); 
+        autoFarmIntervals.delete(userId); 
+    }
 }
 
 function buildBuyModal(title, customId, priceInfo) {
@@ -957,13 +962,17 @@ client.on('interactionCreate', async interaction => {
 
                 console.log(`♻️ Reset: ${targetUser.username} by ${interaction.user.username}`);
                 return interaction.editReply({ 
-                    content: `✅ **Reset berhasil (REALTIME)!**\n\n> 👤 Player: **${targetUser.username}**\n> ♻️ Semua data direset.\n> 📌 UI player langsung di-refresh.` 
+                    content: `✅ **Reset berhasil (REALTIME)!**\n\n> 👤 Player: **${targetUser.username}**\n> ♻️ Semua data direset.` 
                 });
             }
 
             if (interaction.commandName === 'farming') {
                 await interaction.deferReply();
                 const ud = loadUser(userId, interaction.user.username);
+                // FORCE SYNC: kalau ada interval jalan, tapi flag false → matikan
+                if (autoFarmIntervals.has(userId) && !ud.autoFarm) {
+                    ud.autoFarm = true;
+                }
                 userCache.set(userId, ud);
                 ud.currentView = 'main';
                 const msg = await interaction.editReply({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
@@ -1011,6 +1020,15 @@ client.on('interactionCreate', async interaction => {
             if (interaction.customId === 'select_tool') {
                 let ud = userCache.get(userId);
                 if (!ud) { ud = loadUser(userId, interaction.user.username); userCache.set(userId, ud); }
+                
+                // Stop auto farm karena ini interaksi non-toggle
+                if (autoFarmIntervals.has(userId)) {
+                    stopAutoFarm(userId);
+                    ud.autoFarm = false;
+                    ud.lastBreak = 'Auto Farm dimatikan (interaksi lain).';
+                    db.saveUser(ud);
+                }
+                
                 const value = interaction.values[0];
                 let msg = '';
                 if (value === 'unequip') {
@@ -1036,6 +1054,13 @@ client.on('interactionCreate', async interaction => {
             const ud = loadUser(userId, interaction.user.username);
             userCache.set(userId, ud);
 
+            // Stop auto farm karena ini interaksi non-toggle
+            if (autoFarmIntervals.has(userId)) {
+                stopAutoFarm(userId);
+                ud.autoFarm = false;
+                ud.lastBreak = 'Auto Farm dimatikan (interaksi lain).';
+            }
+
             const qtyRaw = interaction.fields.getTextInputValue('quantity');
             const qty = parseInt(qtyRaw);
             if (isNaN(qty) || qty <= 0 || qty > MAX_CUSTOM_QTY) {
@@ -1048,11 +1073,7 @@ client.on('interactionCreate', async interaction => {
                 const key = interaction.customId.replace('modal_buyblock_', '');
                 const b = SHOP_BLOCKS[key];
                 if (!b) return interaction.reply({ content: '❌ Block tidak valid.', ephemeral: true });
-                
-                if (isUnlimited(key)) {
-                    return interaction.reply({ content: `♾️ **${b.name}** unlimited — tidak perlu dibeli!`, ephemeral: true });
-                }
-                
+                if (isUnlimited(key)) return interaction.reply({ content: `♾️ **${b.name}** unlimited!`, ephemeral: true });
                 const totalCost = b.price * qty;
                 if (ud.gems < totalCost) return interaction.reply({ content: `❌ Gems kurang! Butuh ${totalCost.toLocaleString()}`, ephemeral: true });
                 ud.gems -= totalCost;
@@ -1089,16 +1110,23 @@ client.on('interactionCreate', async interaction => {
         }
         ud.username = interaction.user.username;
 
-        if (ud.autoFarm === true && !autoFarmIntervals.has(userId)) {
-            ud.autoFarm = false;
-            ud.lastBreak = 'Auto Farm di-reset.';
+        // ==========================================
+        // 🎯 FIX UTAMA: PAKAI autoFarmIntervals.has() SEBAGAI TRUTH
+        // ==========================================
+        const isAutoRunning = autoFarmIntervals.has(userId);
+        
+        // Sync flag dengan reality
+        if (ud.autoFarm !== isAutoRunning) {
+            ud.autoFarm = isAutoRunning;
         }
 
-        if (id !== 'btn_toggle_auto' && ud.autoFarm) {
-            ud.autoFarm = false;
+        // Kalau tombol selain toggle → matikan auto farm (PASTI stop kalau ada interval)
+        if (id !== 'btn_toggle_auto' && isAutoRunning) {
             stopAutoFarm(userId);
+            ud.autoFarm = false;
             ud.lastBreak = 'Auto Farm dimatikan (interaksi lain).';
             db.saveUser(ud);
+            console.log(`⏹️ Auto Farm OFF via "${id}" (user: ${interaction.user.username})`);
         }
 
         let ephemeralMsg = null;
@@ -1150,11 +1178,7 @@ client.on('interactionCreate', async interaction => {
             const key = id.replace('customblock_', '');
             const b = SHOP_BLOCKS[key];
             if (!b) return interaction.reply({ content: '❌ Block tidak valid.', ephemeral: true });
-            
-            if (isUnlimited(key)) {
-                return interaction.reply({ content: `♾️ **${b.name}** tidak perlu dibeli (unlimited)!`, ephemeral: true });
-            }
-            
+            if (isUnlimited(key)) return interaction.reply({ content: `♾️ **${b.name}** tidak perlu dibeli!`, ephemeral: true });
             return interaction.showModal(buildBuyModal(`Beli ${b.name}`, `modal_buyblock_${key}`, `Harga: ${b.price.toLocaleString()}/block`));
         }
         if (id.startsWith('customlock_')) {
@@ -1178,12 +1202,17 @@ client.on('interactionCreate', async interaction => {
         else if (id === 'nav_event')        ud.currentView = 'event';
 
         else if (id === 'btn_toggle_auto') {
+            // Pakai autoFarmIntervals.has() sebagai truth
             const isCurrentlyRunning = autoFarmIntervals.has(userId);
+            
             if (isCurrentlyRunning) {
+                // STOP
+                stopAutoFarm(userId);
                 ud.autoFarm = false;
                 ud.lastBreak = 'Auto Farm dimatikan.';
-                stopAutoFarm(userId);
+                console.log(`⏹️ Auto Farm OFF via toggle (user: ${interaction.user.username})`);
             } else {
+                // START
                 if (getTotalBlocks(ud) <= 0) {
                     ephemeralMsg = '❌ Semua block habis!';
                     ephemeralError = true;
@@ -1192,6 +1221,7 @@ client.on('interactionCreate', async interaction => {
                     ud.autoFarm = true;
                     ud.lastBreak = 'Auto Farm aktif!';
                     startAutoFarm(userId);
+                    console.log(`▶️ Auto Farm ON via toggle (user: ${interaction.user.username})`);
                 }
             }
             db.saveUser(ud);
@@ -1279,10 +1309,6 @@ client.on('interactionCreate', async interaction => {
                 ud.skillPoints -= cost;
                 ud.skills[key]++;
                 
-                if (key === 'mining_speed' && ud.autoFarm) {
-                    startAutoFarm(userId);
-                }
-                
                 db.saveUser(ud);
                 ephemeralMsg = `✅ ${s.emoji} **${s.name}** → Lv.**${ud.skills[key]}/${s.maxLevel}** (-${cost} SP, sisa ${ud.skillPoints} SP)`;
                 if (key === 'mining_speed') {
@@ -1292,6 +1318,7 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
+        // ⚡ FINAL SAFETY: kalau ada interval tapi flag false → stop
         if (ud.autoFarm === false && autoFarmIntervals.has(userId)) {
             stopAutoFarm(userId);
         }
