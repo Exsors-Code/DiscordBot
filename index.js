@@ -36,9 +36,9 @@ const EVENT_ROLE_IDS = [
 // ==========================================
 // ⚙️ AUTO FARM TIMING
 // ==========================================
-const BASE_AUTO_INTERVAL = 5000;              // 5 detik
-const AUTO_INTERVAL_REDUCTION = 200;           // -0.2 detik per mining_speed level
-const MIN_AUTO_INTERVAL = 3000;                // minimum 3 detik (max level 10)
+const BASE_AUTO_INTERVAL = 5000;
+const AUTO_INTERVAL_REDUCTION = 200;
+const MIN_AUTO_INTERVAL = 3000;
 
 function getAutoInterval(ud) {
     const reduction = ud.skills.mining_speed * AUTO_INTERVAL_REDUCTION;
@@ -46,14 +46,16 @@ function getAutoInterval(ud) {
 }
 
 // ==========================================
-// 📈 XP CURVE (lebih ringan)
+// 📈 XP CURVE — Growtopia-style
 // ==========================================
 function getMaxXpForLevel(level) {
-    return 300 + (level - 1) * 400;
+    const L = level;
+    const xp = (17 * L * L * L + 2433 * L * L + 6328 * L - 1908) / 3;
+    return Math.max(1, Math.floor(xp));
 }
 
 // ==========================================
-// ⭐ SKILL COST (naik per level)
+// ⭐ SKILL COST
 // ==========================================
 function getSkillUpgradeCost(currentLevel) {
     return Math.min(5, 1 + Math.floor(currentLevel / 2));
@@ -148,7 +150,6 @@ async function getGuildMemberIds(guildId) {
     return guildMemberCache.get(guildId) || new Set();
 }
 
-// Load user dan normalisasi maxXp sesuai curve baru
 function loadUser(userId, username) {
     const ud = db.getUser(userId, username);
     ud.maxXp = getMaxXpForLevel(ud.level);
@@ -203,9 +204,6 @@ function mainButtons(ud) {
     return [row1, row2, row3];
 }
 
-// ==========================================
-// EVENT
-// ==========================================
 function eventEmbed(ud) {
     const ev = ud.event;
     return new EmbedBuilder().setColor('#E91E63').setTitle('🎉 Event Aktif')
@@ -223,9 +221,6 @@ function eventButtons() {
     )];
 }
 
-// ==========================================
-// SHOP
-// ==========================================
 function shopMainEmbed(ud) {
     return new EmbedBuilder().setColor('#5865F2').setTitle('🛒 Shop')
         .setDescription('Pilih kategori:')
@@ -375,20 +370,19 @@ function shopLocksButtons() {
     ];
 }
 
-// ==========================================
-// SKILLS
-// ==========================================
 function skillsEmbed(ud) {
     const totalSkillLvl = Object.values(ud.skills).reduce((a,b)=>a+b,0);
     const totalMax = Object.values(SKILLS).reduce((a,b)=>a+b.maxLevel,0);
     const currentInterval = (getAutoInterval(ud) / 1000).toFixed(1);
+    const nextXp = getMaxXpForLevel(ud.level);
     return new EmbedBuilder().setColor('#9B59B6').setTitle('⭐ Skills')
         .setDescription(
             `### ⭐ Skill Points: **${ud.skillPoints}** SP\n` +
             `> Setiap naik **Level** mendapat **+1 SP**.\n` +
             `> Biaya upgrade naik tiap level skill.\n` +
             `> Total Skill Level: **${totalSkillLvl} / ${totalMax}**\n` +
-            `> ⏱️ Auto Farm Interval: **${currentInterval}s**\n\n` +
+            `> ⏱️ Auto Farm Interval: **${currentInterval}s**\n` +
+            `> 📈 XP Next Level: **${nextXp.toLocaleString()}**\n\n` +
             Object.entries(SKILLS).map(([key, s]) => {
                 const lvl = ud.skills[key];
                 const isMax = lvl >= s.maxLevel;
@@ -420,9 +414,6 @@ function skillsButtons(ud) {
     ];
 }
 
-// ==========================================
-// ITEMS
-// ==========================================
 function itemsEmbed(ud) {
     return new EmbedBuilder().setColor('#E67E22').setTitle('🎒 Items')
         .setDescription(
@@ -438,9 +429,6 @@ function itemsButtons(ud) {
     )];
 }
 
-// ==========================================
-// TOOLS
-// ==========================================
 function toolsEmbed(ud) {
     const tool = ud.equippedTool ? SHOP_TOOLS[ud.equippedTool] : null;
     return new EmbedBuilder().setColor('#3498DB').setTitle('🛠️ Tools')
@@ -482,9 +470,6 @@ function toolsButtons(ud) {
     return rows;
 }
 
-// ==========================================
-// PROFILE
-// ==========================================
 function profileEmbed(ud) {
     const tool = ud.equippedTool ? SHOP_TOOLS[ud.equippedTool] : null;
     const totalValue = getTotalLockValue(ud);
@@ -510,9 +495,6 @@ function profileButtons() {
     )];
 }
 
-// ==========================================
-// LEADERBOARD
-// ==========================================
 async function generateLeaderboardEmbed(guildId) {
     const allUsers = db.getAllUsers();
     const memberIds = await getGuildMemberIds(guildId);
@@ -565,9 +547,6 @@ async function refreshAllLeaderboards() {
     }
 }
 
-// ==========================================
-// RENDER ROUTER
-// ==========================================
 function renderEmbed(ud) {
     switch(ud.currentView) {
         case 'shop':         return shopMainEmbed(ud);
@@ -601,9 +580,6 @@ function renderButtons(ud) {
     }
 }
 
-// ==========================================
-// BREAK LOGIC
-// ==========================================
 function doBreak(ud) {
     const blockType = ud.selectedBlock;
     const bd = SHOP_BLOCKS[blockType];
@@ -667,9 +643,6 @@ function formatBreakLog(result, prefix = 'Auto') {
     return msg;
 }
 
-// ==========================================
-// AUTO FARM — dengan dynamic interval
-// ==========================================
 function startAutoFarm(userId) {
     const existingId = autoFarmIntervals.get(userId);
     if (existingId) { clearInterval(existingId); autoFarmIntervals.delete(userId); }
@@ -677,7 +650,7 @@ function startAutoFarm(userId) {
     const ud0 = userCache.get(userId);
     if (!ud0) return;
     
-    const interval = getAutoInterval(ud0); // dynamic berdasarkan skill
+    const interval = getAutoInterval(ud0);
     const myToken = (autoFarmTokens.get(userId) || 0) + 1;
     autoFarmTokens.set(userId, myToken);
 
@@ -754,9 +727,6 @@ function buildBuyModal(title, customId, priceInfo) {
     return modal;
 }
 
-// ==========================================
-// SETUP GUILD
-// ==========================================
 async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
     try {
         const panelChannel = await client.channels.fetch(panelChannelId).catch(() => null);
@@ -834,9 +804,6 @@ async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
     } catch (err) { console.error(`❌ Setup guild ${guild.name} gagal:`, err.message); }
 }
 
-// ==========================================
-// BOT READY
-// ==========================================
 client.once('ready', async () => {
     console.log(`✅ Bot ${client.user.tag} siap!`);
     console.log(`🌐 Terhubung ke ${client.guilds.cache.size} server`);
@@ -864,9 +831,6 @@ client.on('guildCreate', (guild) => {
     console.log(`➕ Join guild: ${guild.name} (${guild.id})`);
 });
 
-// ==========================================
-// INTERACTION HANDLER
-// ==========================================
 client.on('interactionCreate', async interaction => {
     try {
         const _userId = interaction.user.id;
@@ -891,6 +855,56 @@ client.on('interactionCreate', async interaction => {
                 guildLeaderboards.delete(interaction.guildId);
                 guildMemberCache.delete(interaction.guildId);
                 return interaction.reply({ content: `✅ Konfigurasi dihapus.`, ephemeral: true });
+            }
+
+            // ==========================================
+            // /resetplayer
+            // ==========================================
+            if (interaction.commandName === 'resetplayer') {
+                await interaction.deferReply({ ephemeral: true });
+
+                const targetUser = interaction.options.getUser('player');
+                if (!targetUser) {
+                    return interaction.editReply({ content: '❌ Player tidak valid.' });
+                }
+
+                // Cek role/izin
+                const member = interaction.guild 
+                    ? await interaction.guild.members.fetch(userId).catch(() => null) 
+                    : null;
+                if (!isEventManager(member)) {
+                    return interaction.editReply({ 
+                        content: `🔒 Hanya Event Manager / Administrator yang bisa pakai command ini.` 
+                    });
+                }
+
+                // Stop auto farm kalau sedang jalan
+                if (autoFarmIntervals.has(targetUser.id)) {
+                    stopAutoFarm(targetUser.id);
+                }
+
+                // Hapus dari semua cache
+                userCache.delete(targetUser.id);
+                activeMessages.delete(targetUser.id);
+                userThreads.delete(targetUser.id);
+
+                // Hapus dari database
+                const success = db.resetUser(targetUser.id);
+
+                if (!success) {
+                    return interaction.editReply({ 
+                        content: `⚠️ Player **${targetUser.username}** belum pernah main atau data tidak ditemukan.` 
+                    });
+                }
+
+                console.log(`♻️ Reset player: ${targetUser.username} (${targetUser.id}) by ${interaction.user.username}`);
+
+                // Refresh leaderboard
+                refreshAllLeaderboards();
+
+                return interaction.editReply({ 
+                    content: `✅ **Reset berhasil!**\n\n> 👤 Player: **${targetUser.username}**\n> 🆔 ID: \`${targetUser.id}\`\n> ♻️ Semua data (level, gems, locks, items, tools, dll) sudah direset.\n\n*Player akan mulai dari awal saat membuka bot lagi.*` 
+                });
             }
 
             if (interaction.commandName === 'farming') {
@@ -1200,7 +1214,6 @@ client.on('interactionCreate', async interaction => {
                 ud.skillPoints -= cost;
                 ud.skills[key]++;
                 
-                // Kalau mining_speed baru di-upgrade, restart auto farm dengan interval baru
                 if (key === 'mining_speed' && ud.autoFarm) {
                     startAutoFarm(userId);
                 }
