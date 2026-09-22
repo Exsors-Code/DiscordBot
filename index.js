@@ -61,6 +61,39 @@ function getSkillUpgradeCost(currentLevel) {
     return Math.min(5, 1 + Math.floor(currentLevel / 2));
 }
 
+// ==========================================
+// 🆕 DEFAULT USER (untuk realtime reset)
+// ==========================================
+function createDefaultUser(userId, username) {
+    return {
+        userId,
+        username: username || 'Unknown',
+        level: 1,
+        xp: 0,
+        maxXp: getMaxXpForLevel(1),
+        skillPoints: 0,
+        gems: 500000,
+        blocks: { dirt: 500, pog: 0 },
+        selectedBlock: 'dirt',
+        ownedTools: [],
+        equippedTool: null,
+        skills: {
+            mining_speed: 0,
+            gem_hunter: 0,
+            lucky_find: 0,
+            xp_boost: 0,
+            inventory_master: 0
+        },
+        items: { arroz: 0, clover: 0 },
+        activeBuffs: { arroz: 0, clover: 0 },
+        locks: { wl: 1, dl: 0, bgl: 0, bglb: 0 },
+        autoFarm: false,
+        lastBreak: 'Auto Farm belum dinyalakan.',
+        currentView: 'main',
+        event: { name: 'Tidak Ada Event', gemsMult: 1, blocksMult: 1 }
+    };
+}
+
 const SHOP_TOOLS = {
     lss:  { name: 'LSS',  price: 10000,    multiplier: 30,  invBonus: 5000,  blocksPerBreak: 3,  emoji: '🗡️' },
     lray: { name: 'LRAY', price: 100000,   multiplier: 50,  invBonus: 10000, blocksPerBreak: 7,  emoji: '🔫' },
@@ -727,6 +760,68 @@ function buildBuyModal(title, customId, priceInfo) {
     return modal;
 }
 
+// ==========================================
+// 🔥 REALTIME RESET — Update embed player live
+// ==========================================
+async function realtimeResetPlayer(targetUser) {
+    const userId = targetUser.id;
+    const username = targetUser.username;
+
+    // 1. Stop auto farm kalau sedang jalan
+    if (autoFarmIntervals.has(userId)) {
+        stopAutoFarm(userId);
+    }
+
+    // 2. Simpan referensi ke message player sebelum dihapus dari cache
+    const oldMsg = activeMessages.get(userId);
+    const oldThreadId = userThreads.get(userId);
+
+    // 3. Hapus dari semua cache
+    userCache.delete(userId);
+    activeMessages.delete(userId);
+    userThreads.delete(userId);
+    userLastInteraction.delete(userId);
+
+    // 4. Hapus dari database
+    const success = db.resetUser(userId);
+
+    // 5. Update message player jadi "reset" state
+    if (oldMsg) {
+        try {
+            const resetEmbed = new EmbedBuilder()
+                .setColor('#ED4245')
+                .setTitle('♻️ Akun Direset')
+                .setDescription(
+                    `**@${username}** telah direset oleh admin.\n\n` +
+                    `> 🏆 Level: **1**\n` +
+                    `> 💰 Gems: **500.000**\n` +
+                    `> 🟫 Dirt: **500**\n` +
+                    `> 🥔 POG: **0**\n` +
+                    `> 🔒 WL: **1**\n\n` +
+                    `*Buka kembali dengan \`/farming\` atau klik tombol di bawah untuk mulai dari awal.*`
+                )
+                .setTimestamp();
+
+            const resetRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('nav_main')
+                    .setLabel('🔄 Mulai Ulang')
+                    .setStyle(ButtonStyle.Success)
+            );
+
+            await oldMsg.edit({ embeds: [resetEmbed], components: [resetRow] });
+            console.log(`♻️ Realtime reset message untuk ${username}`);
+        } catch (e) {
+            console.log(`⚠️ Gagal update message reset ${username}: ${e.message}`);
+        }
+    }
+
+    // 6. Refresh leaderboard
+    await refreshAllLeaderboards();
+
+    return success;
+}
+
 async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
     try {
         const panelChannel = await client.channels.fetch(panelChannelId).catch(() => null);
@@ -858,7 +953,7 @@ client.on('interactionCreate', async interaction => {
             }
 
             // ==========================================
-            // /resetplayer
+            // 🔥 /resetplayer — REALTIME RESET
             // ==========================================
             if (interaction.commandName === 'resetplayer') {
                 await interaction.deferReply({ ephemeral: true });
@@ -878,18 +973,8 @@ client.on('interactionCreate', async interaction => {
                     });
                 }
 
-                // Stop auto farm kalau sedang jalan
-                if (autoFarmIntervals.has(targetUser.id)) {
-                    stopAutoFarm(targetUser.id);
-                }
-
-                // Hapus dari semua cache
-                userCache.delete(targetUser.id);
-                activeMessages.delete(targetUser.id);
-                userThreads.delete(targetUser.id);
-
-                // Hapus dari database
-                const success = db.resetUser(targetUser.id);
+                // 🚀 REALTIME RESET
+                const success = await realtimeResetPlayer(targetUser);
 
                 if (!success) {
                     return interaction.editReply({ 
@@ -897,13 +982,10 @@ client.on('interactionCreate', async interaction => {
                     });
                 }
 
-                console.log(`♻️ Reset player: ${targetUser.username} (${targetUser.id}) by ${interaction.user.username}`);
-
-                // Refresh leaderboard
-                refreshAllLeaderboards();
+                console.log(`♻️ Realtime reset: ${targetUser.username} (${targetUser.id}) by ${interaction.user.username}`);
 
                 return interaction.editReply({ 
-                    content: `✅ **Reset berhasil!**\n\n> 👤 Player: **${targetUser.username}**\n> 🆔 ID: \`${targetUser.id}\`\n> ♻️ Semua data (level, gems, locks, items, tools, dll) sudah direset.\n\n*Player akan mulai dari awal saat membuka bot lagi.*` 
+                    content: `✅ **Reset berhasil (REALTIME)!**\n\n> 👤 Player: **${targetUser.username}**\n> 🆔 ID: \`${targetUser.id}\`\n> ♻️ Semua data (level, gems, locks, items, tools, auto farm) sudah direset.\n> 📌 UI farming player langsung di-refresh ke default.\n\n*Player tinggal klik 🔄 Mulai Ulang untuk main lagi.*` 
                 });
             }
 
