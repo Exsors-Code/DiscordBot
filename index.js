@@ -1,6 +1,6 @@
 require('dotenv').config();
-const {
-    Client, GatewayIntentBits, EmbedBuilder,
+const { 
+    Client, GatewayIntentBits, EmbedBuilder, 
     ActionRowBuilder, ButtonBuilder, ButtonStyle,
     ChannelType, ModalBuilder, TextInputBuilder, TextInputStyle,
     StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
@@ -10,12 +10,12 @@ const db = require('./database');
 const fs = require('fs');
 const path = require('path');
 
-const client = new Client({
+const client = new Client({ 
     intents: [
-        GatewayIntentBits.Guilds,
+        GatewayIntentBits.Guilds, 
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.GuildMembers
-    ]
+    ] 
 });
 
 process.on('unhandledRejection', (error) => {
@@ -32,6 +32,32 @@ const LEADERBOARD_UPDATE_INTERVAL = 10000;
 const EVENT_ROLE_IDS = [
     '1408101505008926840'
 ];
+
+// ==========================================
+// ⚙️ AUTO FARM TIMING
+// ==========================================
+const BASE_AUTO_INTERVAL = 5000;              // 5 detik
+const AUTO_INTERVAL_REDUCTION = 200;           // -0.2 detik per mining_speed level
+const MIN_AUTO_INTERVAL = 3000;                // minimum 3 detik (max level 10)
+
+function getAutoInterval(ud) {
+    const reduction = ud.skills.mining_speed * AUTO_INTERVAL_REDUCTION;
+    return Math.max(MIN_AUTO_INTERVAL, BASE_AUTO_INTERVAL - reduction);
+}
+
+// ==========================================
+// 📈 XP CURVE (lebih ringan)
+// ==========================================
+function getMaxXpForLevel(level) {
+    return 300 + (level - 1) * 400;
+}
+
+// ==========================================
+// ⭐ SKILL COST (naik per level)
+// ==========================================
+function getSkillUpgradeCost(currentLevel) {
+    return Math.min(5, 1 + Math.floor(currentLevel / 2));
+}
 
 const SHOP_TOOLS = {
     lss:  { name: 'LSS',  price: 10000,    multiplier: 30,  invBonus: 5000,  blocksPerBreak: 3,  emoji: '🗡️' },
@@ -53,7 +79,7 @@ const SHOP_LOCKS = {
     bgl: { name: 'BGL', emoji: '🔶', price: 20000000, desc: 'Blue Gem Lock (= 100 DL)' }
 };
 const SKILLS = {
-    mining_speed:     { name: 'Mining Speed',     emoji: '⛏️', maxLevel: 10, desc: 'Mempercepat auto farm' },
+    mining_speed:     { name: 'Mining Speed',     emoji: '⛏️', maxLevel: 10, desc: 'Mempercepat auto farm (-0.2s / level)' },
     gem_hunter:       { name: 'Gem Hunter',       emoji: '💎', maxLevel: 10, desc: '+10% Gems per level' },
     lucky_find:       { name: 'Lucky Find',       emoji: '🍀', maxLevel: 10, desc: '+2% peluang gems x10' },
     xp_boost:         { name: 'XP Boost',         emoji: '📈', maxLevel: 10, desc: '+10% XP per level' },
@@ -78,15 +104,9 @@ const INTERACTION_LOCK_MS = 1500;
 
 function getTotalBlocks(ud) { return ud.blocks.dirt + ud.blocks.pog; }
 
-// Konversi total lock ke WL:
-// 1 WL = 1 WL | 1 DL = 100 WL | 1 BGL = 10.000 WL | 1 BGLB = 1.000.000 WL
 function getTotalLockValue(ud) {
     const { wl, dl, bgl, bglb } = ud.locks;
     return (wl * 1) + (dl * 100) + (bgl * 10000) + (bglb * 1000000);
-}
-function getTotalLockCount(ud) {
-    const { wl, dl, bgl, bglb } = ud.locks;
-    return wl + dl + bgl + bglb;
 }
 function isBuffActive(ud, key) { return Date.now() < ud.activeBuffs[key]; }
 function getActiveBuffText(ud) {
@@ -97,9 +117,13 @@ function getActiveBuffText(ud) {
 }
 function checkLevelUp(ud) {
     let leveledUp = 0;
+    ud.maxXp = getMaxXpForLevel(ud.level);
     while (ud.xp >= ud.maxXp) {
-        ud.xp -= ud.maxXp; ud.level++; ud.skillPoints++;
-        ud.maxXp = Math.floor(ud.maxXp * 1.25); leveledUp++;
+        ud.xp -= ud.maxXp;
+        ud.level++;
+        ud.skillPoints++;
+        ud.maxXp = getMaxXpForLevel(ud.level);
+        leveledUp++;
     }
     return leveledUp;
 }
@@ -124,6 +148,13 @@ async function getGuildMemberIds(guildId) {
     return guildMemberCache.get(guildId) || new Set();
 }
 
+// Load user dan normalisasi maxXp sesuai curve baru
+function loadUser(userId, username) {
+    const ud = db.getUser(userId, username);
+    ud.maxXp = getMaxXpForLevel(ud.level);
+    return ud;
+}
+
 // ==========================================
 // MAIN
 // ==========================================
@@ -131,7 +162,8 @@ function mainEmbed(ud) {
     const tool = ud.equippedTool ? SHOP_TOOLS[ud.equippedTool] : null;
     const selected = SHOP_BLOCKS[ud.selectedBlock];
     const selectedQty = ud.blocks[ud.selectedBlock];
-    const autoStatus = ud.autoFarm ? '**ON** • 1s' : '**OFF**';
+    const interval = getAutoInterval(ud);
+    const autoStatus = ud.autoFarm ? `**ON** • ${(interval / 1000).toFixed(1)}s` : '**OFF**';
     const far = tool ? tool.blocksPerBreak : 1;
     const ev = ud.event;
     return new EmbedBuilder()
@@ -349,15 +381,19 @@ function shopLocksButtons() {
 function skillsEmbed(ud) {
     const totalSkillLvl = Object.values(ud.skills).reduce((a,b)=>a+b,0);
     const totalMax = Object.values(SKILLS).reduce((a,b)=>a+b.maxLevel,0);
+    const currentInterval = (getAutoInterval(ud) / 1000).toFixed(1);
     return new EmbedBuilder().setColor('#9B59B6').setTitle('⭐ Skills')
         .setDescription(
             `### ⭐ Skill Points: **${ud.skillPoints}** SP\n` +
-            `> Setiap naik **Level**, kamu dapat **+1 SP**.\n` +
-            `> Total Skill Level: **${totalSkillLvl} / ${totalMax}**\n\n` +
+            `> Setiap naik **Level** mendapat **+1 SP**.\n` +
+            `> Biaya upgrade naik tiap level skill.\n` +
+            `> Total Skill Level: **${totalSkillLvl} / ${totalMax}**\n` +
+            `> ⏱️ Auto Farm Interval: **${currentInterval}s**\n\n` +
             Object.entries(SKILLS).map(([key, s]) => {
                 const lvl = ud.skills[key];
                 const isMax = lvl >= s.maxLevel;
-                const status = isMax ? '**MAX** ✅' : `Lv. ${lvl}/${s.maxLevel}`;
+                const cost = getSkillUpgradeCost(lvl);
+                const status = isMax ? '**MAX** ✅' : `Lv. ${lvl}/${s.maxLevel} • Cost: **${cost} SP**`;
                 return `${s.emoji} **${s.name}** — ${status}\n> ${s.desc}`;
             }).join('\n\n')
         )
@@ -365,7 +401,11 @@ function skillsEmbed(ud) {
 }
 function skillsButtons(ud) {
     const sp = ud.skillPoints;
-    const dis = (key) => sp <= 0 || ud.skills[key] >= SKILLS[key].maxLevel;
+    const dis = (key) => {
+        const lvl = ud.skills[key];
+        if (lvl >= SKILLS[key].maxLevel) return true;
+        return sp < getSkillUpgradeCost(lvl);
+    };
     return [
         new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('up_mining_speed').setLabel('⛏️ Mining').setStyle(ButtonStyle.Success).setDisabled(dis('mining_speed')),
@@ -405,7 +445,7 @@ function toolsEmbed(ud) {
     const tool = ud.equippedTool ? SHOP_TOOLS[ud.equippedTool] : null;
     return new EmbedBuilder().setColor('#3498DB').setTitle('🛠️ Tools')
         .setDescription(
-            (tool
+            (tool 
                 ? `**Equipped Tool:** ${tool.emoji} **${tool.name} x${tool.multiplier}**`
                 : '*Tidak ada tool yang di-equip*'
             ) +
@@ -471,7 +511,7 @@ function profileButtons() {
 }
 
 // ==========================================
-// LEADERBOARD — Total dalam WL
+// LEADERBOARD
 // ==========================================
 async function generateLeaderboardEmbed(guildId) {
     const allUsers = db.getAllUsers();
@@ -628,12 +668,16 @@ function formatBreakLog(result, prefix = 'Auto') {
 }
 
 // ==========================================
-// AUTO FARM
+// AUTO FARM — dengan dynamic interval
 // ==========================================
 function startAutoFarm(userId) {
     const existingId = autoFarmIntervals.get(userId);
     if (existingId) { clearInterval(existingId); autoFarmIntervals.delete(userId); }
 
+    const ud0 = userCache.get(userId);
+    if (!ud0) return;
+    
+    const interval = getAutoInterval(ud0); // dynamic berdasarkan skill
     const myToken = (autoFarmTokens.get(userId) || 0) + 1;
     autoFarmTokens.set(userId, myToken);
 
@@ -679,7 +723,7 @@ function startAutoFarm(userId) {
         const msg = activeMessages.get(userId);
         if (msg) {
             try { await msg.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); }
-            catch (e) {
+            catch (e) { 
                 clearInterval(intervalId);
                 if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
             }
@@ -687,7 +731,7 @@ function startAutoFarm(userId) {
             clearInterval(intervalId);
             if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
         }
-    }, 1000);
+    }, interval);
 
     autoFarmIntervals.set(userId, intervalId);
 }
@@ -851,7 +895,7 @@ client.on('interactionCreate', async interaction => {
 
             if (interaction.commandName === 'farming') {
                 await interaction.deferReply();
-                const ud = db.getUser(userId, interaction.user.username);
+                const ud = loadUser(userId, interaction.user.username);
                 userCache.set(userId, ud);
                 ud.currentView = 'main';
                 const msg = await interaction.editReply({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
@@ -859,7 +903,7 @@ client.on('interactionCreate', async interaction => {
             }
 
             else if (interaction.commandName === 'event') {
-                const ud = db.getUser(userId, interaction.user.username);
+                const ud = loadUser(userId, interaction.user.username);
                 userCache.set(userId, ud);
                 await interaction.reply({ embeds: [eventEmbed(ud)], ephemeral: true });
             }
@@ -867,15 +911,15 @@ client.on('interactionCreate', async interaction => {
             else if (interaction.commandName === 'customevent') {
                 await interaction.deferReply({ ephemeral: true });
                 try {
-                    const member = interaction.guild
-                        ? await interaction.guild.members.fetch(userId).catch(() => null)
+                    const member = interaction.guild 
+                        ? await interaction.guild.members.fetch(userId).catch(() => null) 
                         : null;
                     if (!isEventManager(member)) {
-                        return interaction.editReply({
-                            content: `🔒 Hanya Event Manager / Administrator yang bisa pakai command ini.`
+                        return interaction.editReply({ 
+                            content: `🔒 Hanya Event Manager / Administrator yang bisa pakai command ini.` 
                         });
                     }
-                    const ud = db.getUser(userId, interaction.user.username);
+                    const ud = loadUser(userId, interaction.user.username);
                     userCache.set(userId, ud);
                     const gemsMult = interaction.options.getInteger('gems');
                     const blocksMult = interaction.options.getInteger('blocks');
@@ -885,8 +929,8 @@ client.on('interactionCreate', async interaction => {
                     db.saveUser(ud);
                     const msg = activeMessages.get(userId);
                     if (msg) { try { await msg.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); } catch {} }
-                    return interaction.editReply({
-                        content: `✅ Event diupdate!\n> 💰 Gems & 📈 XP: **x${gemsMult}**\n> 🟫 Blocks: **x${blocksMult}**`
+                    return interaction.editReply({ 
+                        content: `✅ Event diupdate!\n> 💰 Gems & 📈 XP: **x${gemsMult}**\n> 🟫 Blocks: **x${blocksMult}**` 
                     });
                 } catch (innerErr) {
                     console.error('❌ /customevent error:', innerErr);
@@ -900,7 +944,7 @@ client.on('interactionCreate', async interaction => {
             const userId = interaction.user.id;
             if (interaction.customId === 'select_tool') {
                 let ud = userCache.get(userId);
-                if (!ud) { ud = db.getUser(userId, interaction.user.username); userCache.set(userId, ud); }
+                if (!ud) { ud = loadUser(userId, interaction.user.username); userCache.set(userId, ud); }
                 const value = interaction.values[0];
                 let msg = '';
                 if (value === 'unequip') {
@@ -923,7 +967,7 @@ client.on('interactionCreate', async interaction => {
 
         if (interaction.isModalSubmit()) {
             const userId = interaction.user.id;
-            const ud = db.getUser(userId, interaction.user.username);
+            const ud = loadUser(userId, interaction.user.username);
             userCache.set(userId, ud);
 
             const qtyRaw = interaction.fields.getTextInputValue('quantity');
@@ -969,7 +1013,7 @@ client.on('interactionCreate', async interaction => {
 
         let ud = userCache.get(userId);
         if (!ud) {
-            ud = db.getUser(userId, interaction.user.username);
+            ud = loadUser(userId, interaction.user.username);
             userCache.set(userId, ud);
         }
         ud.username = interaction.user.username;
@@ -1132,23 +1176,41 @@ client.on('interactionCreate', async interaction => {
             if (!ud.ownedTools.includes(key)) { ephemeralMsg = '❌ Tidak punya tool ini.'; ephemeralError = true; }
             else { ud.equippedTool = key; db.saveUser(ud); ephemeralMsg = `✅ **${SHOP_TOOLS[key].name}** di-equip!`; }
         }
-        else if (id === 'unequip_tool') {
-            ud.equippedTool = null;
+        else if (id === 'unequip_tool') { 
+            ud.equippedTool = null; 
             db.saveUser(ud);
-            ephemeralMsg = '✅ Tool di-unequip.';
+            ephemeralMsg = '✅ Tool di-unequip.'; 
         }
 
         else if (id.startsWith('up_')) {
             const key = id.slice(3);
             const s = SKILLS[key];
             const lvl = ud.skills[key];
-            if (lvl >= s.maxLevel) { ephemeralMsg = `⚠️ **${s.name}** sudah MAX!`; ephemeralError = true; }
-            else if (ud.skillPoints < 1) { ephemeralMsg = `❌ Skill Point tidak cukup! (SP: ${ud.skillPoints})`; ephemeralError = true; }
+            const cost = getSkillUpgradeCost(lvl);
+
+            if (lvl >= s.maxLevel) { 
+                ephemeralMsg = `⚠️ **${s.name}** sudah MAX!`; 
+                ephemeralError = true; 
+            }
+            else if (ud.skillPoints < cost) { 
+                ephemeralMsg = `❌ SP tidak cukup! Butuh **${cost} SP**, kamu punya **${ud.skillPoints} SP**.`; 
+                ephemeralError = true; 
+            }
             else {
-                ud.skillPoints -= 1;
+                ud.skillPoints -= cost;
                 ud.skills[key]++;
+                
+                // Kalau mining_speed baru di-upgrade, restart auto farm dengan interval baru
+                if (key === 'mining_speed' && ud.autoFarm) {
+                    startAutoFarm(userId);
+                }
+                
                 db.saveUser(ud);
-                ephemeralMsg = `✅ ${s.emoji} **${s.name}** → Lv.**${ud.skills[key]}/${s.maxLevel}** (Sisa SP: ${ud.skillPoints})`;
+                ephemeralMsg = `✅ ${s.emoji} **${s.name}** → Lv.**${ud.skills[key]}/${s.maxLevel}** (-${cost} SP, sisa ${ud.skillPoints} SP)`;
+                if (key === 'mining_speed') {
+                    const newInterval = (getAutoInterval(ud) / 1000).toFixed(1);
+                    ephemeralMsg += `\n> ⏱️ Auto Farm sekarang: **${newInterval}s**`;
+                }
             }
         }
 
