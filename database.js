@@ -78,7 +78,6 @@ function rowToUser(row) {
     };
 }
 
-// Auto-convert locks: 100 WL → 1 DL, 100 DL → 1 BGL, 100 BGL → 1 BGLB
 function autoConvertLocks(ud) {
     let converted = 0;
     while (ud.locks.wl >= 100) { ud.locks.wl -= 100; ud.locks.dl += 1; converted++; }
@@ -104,9 +103,8 @@ function getUser(userId, username) {
 
 function saveUser(ud) {
     try {
-        // AUTO-CONVERT locks sebelum save
         autoConvertLocks(ud);
-
+        
         db.prepare(`
             UPDATE users SET
                 username = ?,
@@ -139,6 +137,21 @@ function getAllUsers() {
     return rows.map(rowToUser);
 }
 
+// ==========================================
+// RESET PLAYER — hapus semua data user
+// ==========================================
+function resetUser(userId) {
+    try {
+        const exists = db.prepare('SELECT userId FROM users WHERE userId = ?').get(userId);
+        if (!exists) return false;
+        db.prepare('DELETE FROM users WHERE userId = ?').run(userId);
+        return true;
+    } catch (err) {
+        console.error('❌ Gagal reset user:', err.message);
+        return false;
+    }
+}
+
 function getGuildConfig(guildId) {
     return db.prepare('SELECT * FROM guild_config WHERE guildId = ?').get(guildId) || null;
 }
@@ -162,6 +175,6 @@ function removeGuildConfig(guildId) {
 }
 
 module.exports = {
-    connectDB, getUser, saveUser, getAllUsers,
+    connectDB, getUser, saveUser, getAllUsers, resetUser,
     getGuildConfig, setGuildConfig, updateLeaderboardMessage, getAllGuildConfigs, removeGuildConfig
 };
