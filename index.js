@@ -34,6 +34,15 @@ const EVENT_ROLE_IDS = [
 ];
 
 // ==========================================
+// 🆓 UNLIMITED BLOCKS — Dirt unlimited
+// ==========================================
+const UNLIMITED_BLOCKS = ['dirt'];
+
+function isUnlimited(blockKey) {
+    return UNLIMITED_BLOCKS.includes(blockKey);
+}
+
+// ==========================================
 // ⚙️ AUTO FARM TIMING
 // ==========================================
 const BASE_AUTO_INTERVAL = 5000;
@@ -46,7 +55,7 @@ function getAutoInterval(ud) {
 }
 
 // ==========================================
-// 📈 XP CURVE — Growtopia-style
+// 📈 XP CURVE
 // ==========================================
 function getMaxXpForLevel(level) {
     const L = level;
@@ -54,44 +63,8 @@ function getMaxXpForLevel(level) {
     return Math.max(1, Math.floor(xp));
 }
 
-// ==========================================
-// ⭐ SKILL COST
-// ==========================================
 function getSkillUpgradeCost(currentLevel) {
     return Math.min(5, 1 + Math.floor(currentLevel / 2));
-}
-
-// ==========================================
-// 🆕 DEFAULT USER (untuk realtime reset)
-// ==========================================
-function createDefaultUser(userId, username) {
-    return {
-        userId,
-        username: username || 'Unknown',
-        level: 1,
-        xp: 0,
-        maxXp: getMaxXpForLevel(1),
-        skillPoints: 0,
-        gems: 500000,
-        blocks: { dirt: 500, pog: 0 },
-        selectedBlock: 'dirt',
-        ownedTools: [],
-        equippedTool: null,
-        skills: {
-            mining_speed: 0,
-            gem_hunter: 0,
-            lucky_find: 0,
-            xp_boost: 0,
-            inventory_master: 0
-        },
-        items: { arroz: 0, clover: 0 },
-        activeBuffs: { arroz: 0, clover: 0 },
-        locks: { wl: 1, dl: 0, bgl: 0, bglb: 0 },
-        autoFarm: false,
-        lastBreak: 'Auto Farm belum dinyalakan.',
-        currentView: 'main',
-        event: { name: 'Tidak Ada Event', gemsMult: 1, blocksMult: 1 }
-    };
 }
 
 const SHOP_TOOLS = {
@@ -101,7 +74,7 @@ const SHOP_TOOLS = {
     gray: { name: 'GRAY', price: 10000000, multiplier: 250, invBonus: 20000, blocksPerBreak: 15, emoji: '🌟' }
 };
 const SHOP_BLOCKS = {
-    dirt: { name: 'Dirt',        price: 100,  gemsMin: 1,  gemsMax: 5,   xpMin: 1,  xpMax: 5,   emoji: '🟫', desc: 'Block murah, reward kecil' },
+    dirt: { name: 'Dirt',        price: 100,  gemsMin: 1,  gemsMax: 5,   xpMin: 1,  xpMax: 5,   emoji: '🟫', desc: 'Block murah, reward kecil (UNLIMITED)' },
     pog:  { name: "Pot O' Gems", price: 5000, gemsMin: 85, gemsMax: 100, xpMin: 85, xpMax: 100, emoji: '🥔', desc: 'Block OP, reward besar' }
 };
 const SHOP_ITEMS = {
@@ -189,6 +162,12 @@ function loadUser(userId, username) {
     return ud;
 }
 
+// Format stok dengan dukungan unlimited
+function formatStock(blockKey, amount) {
+    if (isUnlimited(blockKey)) return '**∞ (Unlimited)**';
+    return `**${amount.toLocaleString()}**`;
+}
+
 // ==========================================
 // MAIN
 // ==========================================
@@ -200,6 +179,8 @@ function mainEmbed(ud) {
     const autoStatus = ud.autoFarm ? `**ON** • ${(interval / 1000).toFixed(1)}s` : '**OFF**';
     const far = tool ? tool.blocksPerBreak : 1;
     const ev = ud.event;
+    const selectedStockText = isUnlimited(ud.selectedBlock) ? '∞' : selectedQty.toLocaleString();
+    
     return new EmbedBuilder()
         .setColor(ud.autoFarm ? '#2b2d31' : '#1e1f22')
         .setTitle('🪓 Farming')
@@ -208,8 +189,8 @@ function mainEmbed(ud) {
             { name: '🎉 Event', value: `${ev.name} • Gems x${ev.gemsMult} | Blocks x${ev.blocksMult}`, inline: false },
             { name: 'Tool:', value: tool ? `${tool.emoji} ${tool.name} x${tool.multiplier} • ${far} far` : `⚪ Tidak ada • 1 far`, inline: false },
             { name: 'Buff:', value: getActiveBuffText(ud), inline: false },
-            { name: '⛏️ Block:', value: `${selected.emoji} ${selected.name} (${selectedQty.toLocaleString()})`, inline: false },
-            { name: 'Inventory:', value: `🟫 ${ud.blocks.dirt.toLocaleString()} | 🥔 ${ud.blocks.pog.toLocaleString()}`, inline: true },
+            { name: '⛏️ Block:', value: `${selected.emoji} ${selected.name} (${selectedStockText})`, inline: false },
+            { name: 'Inventory:', value: `🟫 ∞ (Unlimited) | 🥔 ${ud.blocks.pog.toLocaleString()}`, inline: true },
             { name: '💰 Gems:', value: Math.floor(ud.gems).toLocaleString(), inline: true },
             { name: '⭐ SP:', value: `${ud.skillPoints}`, inline: true },
             { name: 'Auto Farm:', value: autoStatus, inline: false },
@@ -259,7 +240,7 @@ function shopMainEmbed(ud) {
         .setDescription('Pilih kategori:')
         .addFields(
             { name: '🛠️ Tools', value: 'Tool boost farming', inline: true },
-            { name: '🟫 Blocks', value: 'Beli block untuk farm', inline: true },
+            { name: '🟫 Blocks', value: 'Beli block (Dirt unlimited)', inline: true },
             { name: '🎒 Items', value: 'Consumable buff', inline: true },
             { name: '🔒 Locks', value: 'Beli lock', inline: true }
         )
@@ -309,7 +290,12 @@ function shopBlocksEmbed(ud) {
     const lines = ['**BELI BLOCK**', ''];
     for (const key in SHOP_BLOCKS) {
         const b = SHOP_BLOCKS[key];
-        lines.push(`${b.emoji} **${b.name}** — ${b.price.toLocaleString()} 💰/block\n> Reward: **${b.gemsMin}-${b.gemsMax}** | **${b.xpMin}-${b.xpMax} XP**\n> 📦 Kamu punya: **${ud.blocks[key].toLocaleString()}**`);
+        const unlimitedTag = isUnlimited(key) ? ' ♾️ **(Unlimited — tidak perlu dibeli)**' : '';
+        lines.push(
+            `${b.emoji} **${b.name}**${unlimitedTag}\n` +
+            `> Reward: **${b.gemsMin}-${b.gemsMax}** | **${b.xpMin}-${b.xpMax} XP**\n` +
+            `> 📦 Stok: ${formatStock(key, ud.blocks[key])}`
+        );
     }
     return new EmbedBuilder().setColor('#8B4513').setTitle('🛒 Shop — Blocks')
         .setDescription(lines.join('\n\n'))
@@ -318,7 +304,6 @@ function shopBlocksEmbed(ud) {
 function shopBlocksButtons() {
     return [
         new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('customblock_dirt').setLabel('🟫 Beli Dirt').setStyle(ButtonStyle.Success),
             new ButtonBuilder().setCustomId('customblock_pog').setLabel('🥔 Beli POG').setStyle(ButtonStyle.Success)
         ),
         new ActionRowBuilder().addComponents(
@@ -334,17 +319,22 @@ function changeBlockEmbed(ud) {
         const b = SHOP_BLOCKS[key];
         const isSelected = ud.selectedBlock === key ? ' **[AKTIF]**' : '';
         const stock = ud.blocks[key];
-        lines.push(`${b.emoji} **${b.name}**${isSelected}\n> Reward: **${b.gemsMin}-${b.gemsMax}** | **${b.xpMin}-${b.xpMax} XP**\n> Stok: **${stock.toLocaleString()}**`);
+        lines.push(
+            `${b.emoji} **${b.name}**${isSelected}\n` +
+            `> Reward: **${b.gemsMin}-${b.gemsMax}** | **${b.xpMin}-${b.xpMax} XP**\n` +
+            `> Stok: ${formatStock(key, stock)}`
+        );
     }
     return new EmbedBuilder().setColor('#8B4513').setTitle('⛏️ Change Block')
         .setDescription(lines.join('\n\n'));
 }
 function changeBlockButtons(ud) {
+    const dirtStock = isUnlimited('dirt') ? '∞' : ud.blocks.dirt.toLocaleString();
     return [
         new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('selectblock_dirt').setLabel(`🟫 Dirt (${ud.blocks.dirt.toLocaleString()})`)
+            new ButtonBuilder().setCustomId('selectblock_dirt').setLabel(`🟫 Dirt (${dirtStock})`)
                 .setStyle(ud.selectedBlock === 'dirt' ? ButtonStyle.Success : ButtonStyle.Primary)
-                .setDisabled(ud.selectedBlock === 'dirt' || ud.blocks.dirt <= 0),
+                .setDisabled(ud.selectedBlock === 'dirt'),
             new ButtonBuilder().setCustomId('selectblock_pog').setLabel(`🥔 POG (${ud.blocks.pog.toLocaleString()})`)
                 .setStyle(ud.selectedBlock === 'pog' ? ButtonStyle.Success : ButtonStyle.Primary)
                 .setDisabled(ud.selectedBlock === 'pog' || ud.blocks.pog <= 0)
@@ -511,7 +501,7 @@ function profileEmbed(ud) {
             { name: '🏆 Level', value: `${ud.level}`, inline: true },
             { name: '🛠️ Tool', value: tool ? `${tool.emoji} ${tool.name}` : 'Tidak ada', inline: true },
             { name: '💰 Gems', value: Math.floor(ud.gems).toLocaleString(), inline: true },
-            { name: '🟫 Dirt', value: ud.blocks.dirt.toLocaleString(), inline: true },
+            { name: '🟫 Dirt', value: '∞ (Unlimited)', inline: true },
             { name: '🥔 POG', value: ud.blocks.pog.toLocaleString(), inline: true },
             { name: '⭐ SP', value: `${ud.skillPoints}`, inline: true },
             { name: '🔒 Locks', value:
@@ -613,27 +603,38 @@ function renderButtons(ud) {
     }
 }
 
+// ==========================================
+// BREAK LOGIC — Dirt unlimited (tidak berkurang)
+// ==========================================
 function doBreak(ud) {
     const blockType = ud.selectedBlock;
     const bd = SHOP_BLOCKS[blockType];
     const tool = ud.equippedTool ? SHOP_TOOLS[ud.equippedTool] : null;
     const farPower = tool ? tool.blocksPerBreak : 1;
     const ev = ud.event;
+    const unlimited = isUnlimited(blockType);
 
-    if (ud.blocks[blockType] <= 0) {
-        const fallback = Object.keys(SHOP_BLOCKS).find(k => k !== blockType && ud.blocks[k] > 0);
-        if (fallback) {
-            ud.selectedBlock = fallback;
-            ud.lastBreak = `⚠️ ${bd.name} habis! Auto-switch ke ${SHOP_BLOCKS[fallback].name}.`;
-            return { switched: true };
+    // Cek stok — skip kalau unlimited
+    if (!unlimited) {
+        if (ud.blocks[blockType] <= 0) {
+            const fallback = Object.keys(SHOP_BLOCKS).find(k => k !== blockType && (isUnlimited(k) || ud.blocks[k] > 0));
+            if (fallback) {
+                ud.selectedBlock = fallback;
+                ud.lastBreak = `⚠️ ${bd.name} habis! Auto-switch ke ${SHOP_BLOCKS[fallback].name}.`;
+                return { switched: true };
+            }
+            ud.lastBreak = '⚠️ Semua block habis! Auto Farm berhenti.';
+            ud.autoFarm = false;
+            return null;
         }
-        ud.lastBreak = '⚠️ Semua block habis! Auto Farm berhenti.';
-        ud.autoFarm = false;
-        return null;
     }
 
-    const blocksToBreak = Math.min(farPower, ud.blocks[blockType]);
-    ud.blocks[blockType] -= blocksToBreak;
+    const blocksToBreak = unlimited ? farPower : Math.min(farPower, ud.blocks[blockType]);
+    
+    // Kurangi stok — HANYA kalau bukan unlimited
+    if (!unlimited) {
+        ud.blocks[blockType] -= blocksToBreak;
+    }
 
     const toolMult = tool ? tool.multiplier : 1;
     const gemSkillMult = 1 + (ud.skills.gem_hunter * 0.10);
@@ -654,18 +655,21 @@ function doBreak(ud) {
         totalXp += Math.floor(baseXp * xpSkillMult * xpBuffMult * ev.gemsMult);
     }
 
+    // Return chance — skip kalau unlimited (tidak ada gunanya)
     let returned = 0;
-    for (let i = 0; i < blocksToBreak; i++) {
-        if (Math.random() < BASE_RETURN_CHANCE) returned++;
+    if (!unlimited) {
+        for (let i = 0; i < blocksToBreak; i++) {
+            if (Math.random() < BASE_RETURN_CHANCE) returned++;
+        }
+        returned = Math.floor(returned * ev.blocksMult);
+        ud.blocks[blockType] += returned;
     }
-    returned = Math.floor(returned * ev.blocksMult);
-    ud.blocks[blockType] += returned;
 
     ud.gems += totalGems;
     ud.xp += totalXp;
     const levelsGained = checkLevelUp(ud);
 
-    return { gemsGained: totalGems, xpGained: totalXp, blockType, levelsGained, blocksBroken: blocksToBreak, returned };
+    return { gemsGained: totalGems, xpGained: totalXp, blockType, levelsGained, blocksBroken: blocksToBreak, returned, unlimited };
 }
 function formatBreakLog(result, prefix = 'Auto') {
     const bd = SHOP_BLOCKS[result.blockType];
@@ -760,32 +764,23 @@ function buildBuyModal(title, customId, priceInfo) {
     return modal;
 }
 
-// ==========================================
-// 🔥 REALTIME RESET — Update embed player live
-// ==========================================
 async function realtimeResetPlayer(targetUser) {
     const userId = targetUser.id;
     const username = targetUser.username;
 
-    // 1. Stop auto farm kalau sedang jalan
     if (autoFarmIntervals.has(userId)) {
         stopAutoFarm(userId);
     }
 
-    // 2. Simpan referensi ke message player sebelum dihapus dari cache
     const oldMsg = activeMessages.get(userId);
-    const oldThreadId = userThreads.get(userId);
 
-    // 3. Hapus dari semua cache
     userCache.delete(userId);
     activeMessages.delete(userId);
     userThreads.delete(userId);
     userLastInteraction.delete(userId);
 
-    // 4. Hapus dari database
     const success = db.resetUser(userId);
 
-    // 5. Update message player jadi "reset" state
     if (oldMsg) {
         try {
             const resetEmbed = new EmbedBuilder()
@@ -795,10 +790,10 @@ async function realtimeResetPlayer(targetUser) {
                     `**@${username}** telah direset oleh admin.\n\n` +
                     `> 🏆 Level: **1**\n` +
                     `> 💰 Gems: **500.000**\n` +
-                    `> 🟫 Dirt: **500**\n` +
+                    `> 🟫 Dirt: **∞ (Unlimited)**\n` +
                     `> 🥔 POG: **0**\n` +
                     `> 🔒 WL: **1**\n\n` +
-                    `*Buka kembali dengan \`/farming\` atau klik tombol di bawah untuk mulai dari awal.*`
+                    `*Klik tombol di bawah untuk mulai dari awal.*`
                 )
                 .setTimestamp();
 
@@ -810,15 +805,12 @@ async function realtimeResetPlayer(targetUser) {
             );
 
             await oldMsg.edit({ embeds: [resetEmbed], components: [resetRow] });
-            console.log(`♻️ Realtime reset message untuk ${username}`);
         } catch (e) {
             console.log(`⚠️ Gagal update message reset ${username}: ${e.message}`);
         }
     }
 
-    // 6. Refresh leaderboard
     await refreshAllLeaderboards();
-
     return success;
 }
 
@@ -952,40 +944,24 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: `✅ Konfigurasi dihapus.`, ephemeral: true });
             }
 
-            // ==========================================
-            // 🔥 /resetplayer — REALTIME RESET
-            // ==========================================
             if (interaction.commandName === 'resetplayer') {
                 await interaction.deferReply({ ephemeral: true });
-
                 const targetUser = interaction.options.getUser('player');
-                if (!targetUser) {
-                    return interaction.editReply({ content: '❌ Player tidak valid.' });
-                }
+                if (!targetUser) return interaction.editReply({ content: '❌ Player tidak valid.' });
 
-                // Cek role/izin
                 const member = interaction.guild 
                     ? await interaction.guild.members.fetch(userId).catch(() => null) 
                     : null;
                 if (!isEventManager(member)) {
-                    return interaction.editReply({ 
-                        content: `🔒 Hanya Event Manager / Administrator yang bisa pakai command ini.` 
-                    });
+                    return interaction.editReply({ content: `🔒 Hanya Event Manager / Administrator.` });
                 }
 
-                // 🚀 REALTIME RESET
                 const success = await realtimeResetPlayer(targetUser);
+                if (!success) return interaction.editReply({ content: `⚠️ Player **${targetUser.username}** belum pernah main.` });
 
-                if (!success) {
-                    return interaction.editReply({ 
-                        content: `⚠️ Player **${targetUser.username}** belum pernah main atau data tidak ditemukan.` 
-                    });
-                }
-
-                console.log(`♻️ Realtime reset: ${targetUser.username} (${targetUser.id}) by ${interaction.user.username}`);
-
+                console.log(`♻️ Reset: ${targetUser.username} by ${interaction.user.username}`);
                 return interaction.editReply({ 
-                    content: `✅ **Reset berhasil (REALTIME)!**\n\n> 👤 Player: **${targetUser.username}**\n> 🆔 ID: \`${targetUser.id}\`\n> ♻️ Semua data (level, gems, locks, items, tools, auto farm) sudah direset.\n> 📌 UI farming player langsung di-refresh ke default.\n\n*Player tinggal klik 🔄 Mulai Ulang untuk main lagi.*` 
+                    content: `✅ **Reset berhasil (REALTIME)!**\n\n> 👤 Player: **${targetUser.username}**\n> ♻️ Semua data direset.\n> 📌 UI player langsung di-refresh.` 
                 });
             }
 
@@ -1011,9 +987,7 @@ client.on('interactionCreate', async interaction => {
                         ? await interaction.guild.members.fetch(userId).catch(() => null) 
                         : null;
                     if (!isEventManager(member)) {
-                        return interaction.editReply({ 
-                            content: `🔒 Hanya Event Manager / Administrator yang bisa pakai command ini.` 
-                        });
+                        return interaction.editReply({ content: `🔒 Hanya Event Manager / Administrator.` });
                     }
                     const ud = loadUser(userId, interaction.user.username);
                     userCache.set(userId, ud);
@@ -1078,6 +1052,12 @@ client.on('interactionCreate', async interaction => {
                 const key = interaction.customId.replace('modal_buyblock_', '');
                 const b = SHOP_BLOCKS[key];
                 if (!b) return interaction.reply({ content: '❌ Block tidak valid.', ephemeral: true });
+                
+                // Tolak kalau unlimited
+                if (isUnlimited(key)) {
+                    return interaction.reply({ content: `♾️ **${b.name}** unlimited — tidak perlu dibeli!`, ephemeral: true });
+                }
+                
                 const totalCost = b.price * qty;
                 if (ud.gems < totalCost) return interaction.reply({ content: `❌ Gems kurang! Butuh ${totalCost.toLocaleString()}`, ephemeral: true });
                 ud.gems -= totalCost;
@@ -1171,10 +1151,16 @@ client.on('interactionCreate', async interaction => {
             return interaction.editReply({ content: `✅ Thread: ${thread}` });
         }
 
+        // Block custom buy — tolak kalau unlimited
         if (id.startsWith('customblock_')) {
             const key = id.replace('customblock_', '');
             const b = SHOP_BLOCKS[key];
             if (!b) return interaction.reply({ content: '❌ Block tidak valid.', ephemeral: true });
+            
+            if (isUnlimited(key)) {
+                return interaction.reply({ content: `♾️ **${b.name}** tidak perlu dibeli (unlimited)!`, ephemeral: true });
+            }
+            
             return interaction.showModal(buildBuyModal(`Beli ${b.name}`, `modal_buyblock_${key}`, `Harga: ${b.price.toLocaleString()}/block`));
         }
         if (id.startsWith('customlock_')) {
@@ -1244,7 +1230,10 @@ client.on('interactionCreate', async interaction => {
         else if (id.startsWith('selectblock_')) {
             const key = id.slice(12);
             if (!SHOP_BLOCKS[key]) { ephemeralMsg = '❌ Block tidak valid.'; ephemeralError = true; }
-            else if (ud.blocks[key] <= 0) { ephemeralMsg = `❌ Kamu tidak punya **${SHOP_BLOCKS[key].name}**!`; ephemeralError = true; }
+            else if (!isUnlimited(key) && ud.blocks[key] <= 0) { 
+                ephemeralMsg = `❌ Kamu tidak punya **${SHOP_BLOCKS[key].name}**!`; 
+                ephemeralError = true; 
+            }
             else { ud.selectedBlock = key; db.saveUser(ud); ephemeralMsg = `✅ Pakai **${SHOP_BLOCKS[key].name}**!`; }
         }
 
@@ -1316,7 +1305,7 @@ client.on('interactionCreate', async interaction => {
         if (!ephemeralError) {
             try {
                 await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
-                activeMessages.set(userId, interaction.message);
+                activeMessages.set(userId, message);
             } catch (err) {}
         }
 
