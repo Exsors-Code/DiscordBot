@@ -33,18 +33,12 @@ const EVENT_ROLE_IDS = [
     '1408101505008926840'
 ];
 
-// ==========================================
-// 🆓 UNLIMITED BLOCKS — Dirt unlimited
-// ==========================================
 const UNLIMITED_BLOCKS = ['dirt'];
 
 function isUnlimited(blockKey) {
     return UNLIMITED_BLOCKS.includes(blockKey);
 }
 
-// ==========================================
-// ⚙️ AUTO FARM TIMING
-// ==========================================
 const BASE_AUTO_INTERVAL = 5000;
 const AUTO_INTERVAL_REDUCTION = 200;
 const MIN_AUTO_INTERVAL = 3000;
@@ -54,9 +48,6 @@ function getAutoInterval(ud) {
     return Math.max(MIN_AUTO_INTERVAL, BASE_AUTO_INTERVAL - reduction);
 }
 
-// ==========================================
-// 📈 XP CURVE
-// ==========================================
 function getMaxXpForLevel(level) {
     const L = level;
     const xp = (17 * L * L * L + 2433 * L * L + 6328 * L - 1908) / 3;
@@ -162,7 +153,6 @@ function loadUser(userId, username) {
     return ud;
 }
 
-// Format stok dengan dukungan unlimited
 function formatStock(blockKey, amount) {
     if (isUnlimited(blockKey)) return '**∞ (Unlimited)**';
     return `**${amount.toLocaleString()}**`;
@@ -190,7 +180,7 @@ function mainEmbed(ud) {
             { name: 'Tool:', value: tool ? `${tool.emoji} ${tool.name} x${tool.multiplier} • ${far} far` : `⚪ Tidak ada • 1 far`, inline: false },
             { name: 'Buff:', value: getActiveBuffText(ud), inline: false },
             { name: '⛏️ Block:', value: `${selected.emoji} ${selected.name} (${selectedStockText})`, inline: false },
-            { name: 'Inventory:', value: `🟫 ∞ (Unlimited) | 🥔 ${ud.blocks.pog.toLocaleString()}`, inline: true },
+            { name: 'Inventory:', value: `🟫 ∞ | 🥔 ${ud.blocks.pog.toLocaleString()}`, inline: true },
             { name: '💰 Gems:', value: Math.floor(ud.gems).toLocaleString(), inline: true },
             { name: '⭐ SP:', value: `${ud.skillPoints}`, inline: true },
             { name: 'Auto Farm:', value: autoStatus, inline: false },
@@ -603,9 +593,6 @@ function renderButtons(ud) {
     }
 }
 
-// ==========================================
-// BREAK LOGIC — Dirt unlimited (tidak berkurang)
-// ==========================================
 function doBreak(ud) {
     const blockType = ud.selectedBlock;
     const bd = SHOP_BLOCKS[blockType];
@@ -614,7 +601,6 @@ function doBreak(ud) {
     const ev = ud.event;
     const unlimited = isUnlimited(blockType);
 
-    // Cek stok — skip kalau unlimited
     if (!unlimited) {
         if (ud.blocks[blockType] <= 0) {
             const fallback = Object.keys(SHOP_BLOCKS).find(k => k !== blockType && (isUnlimited(k) || ud.blocks[k] > 0));
@@ -631,7 +617,6 @@ function doBreak(ud) {
 
     const blocksToBreak = unlimited ? farPower : Math.min(farPower, ud.blocks[blockType]);
     
-    // Kurangi stok — HANYA kalau bukan unlimited
     if (!unlimited) {
         ud.blocks[blockType] -= blocksToBreak;
     }
@@ -655,7 +640,6 @@ function doBreak(ud) {
         totalXp += Math.floor(baseXp * xpSkillMult * xpBuffMult * ev.gemsMult);
     }
 
-    // Return chance — skip kalau unlimited (tidak ada gunanya)
     let returned = 0;
     if (!unlimited) {
         for (let i = 0; i < blocksToBreak; i++) {
@@ -680,6 +664,9 @@ function formatBreakLog(result, prefix = 'Auto') {
     return msg;
 }
 
+// ==========================================
+// ⚡ AUTO FARM — FIXED with re-check before edit
+// ==========================================
 function startAutoFarm(userId) {
     const existingId = autoFarmIntervals.get(userId);
     if (existingId) { clearInterval(existingId); autoFarmIntervals.delete(userId); }
@@ -692,12 +679,14 @@ function startAutoFarm(userId) {
     autoFarmTokens.set(userId, myToken);
 
     const intervalId = setInterval(async () => {
+        // === CHECK 1: TOKEN ===
         if (autoFarmTokens.get(userId) !== myToken) {
             clearInterval(intervalId);
             if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
             return;
         }
 
+        // === CHECK 2: FLAG ===
         const ud = userCache.get(userId);
         if (!ud || ud.autoFarm !== true) {
             clearInterval(intervalId);
@@ -711,6 +700,7 @@ function startAutoFarm(userId) {
         const result = doBreak(ud);
         if (result && !result.switched) ud.lastBreak = formatBreakLog(result, 'Auto');
 
+        // === CHECK 3: BLOCK HABIS ===
         if (ud.autoFarm === false) {
             autoFarmTokens.set(userId, (autoFarmTokens.get(userId) || 0) + 1);
             clearInterval(intervalId);
@@ -728,7 +718,13 @@ function startAutoFarm(userId) {
             ud._lastSave = Date.now();
         }
 
+        // === CHECK 4: USER LOCK ===
         if (isUserLocked) return;
+
+        // === CHECK 5: RE-CHECK SEBELUM EDIT (FIX BUG) ===
+        // Kalau user klik stop/start lain sejak tick ini mulai, batalkan edit.
+        if (autoFarmTokens.get(userId) !== myToken) return;
+        if (ud.autoFarm !== true) return;
 
         const msg = activeMessages.get(userId);
         if (msg) {
@@ -1053,7 +1049,6 @@ client.on('interactionCreate', async interaction => {
                 const b = SHOP_BLOCKS[key];
                 if (!b) return interaction.reply({ content: '❌ Block tidak valid.', ephemeral: true });
                 
-                // Tolak kalau unlimited
                 if (isUnlimited(key)) {
                     return interaction.reply({ content: `♾️ **${b.name}** unlimited — tidak perlu dibeli!`, ephemeral: true });
                 }
@@ -1151,7 +1146,6 @@ client.on('interactionCreate', async interaction => {
             return interaction.editReply({ content: `✅ Thread: ${thread}` });
         }
 
-        // Block custom buy — tolak kalau unlimited
         if (id.startsWith('customblock_')) {
             const key = id.replace('customblock_', '');
             const b = SHOP_BLOCKS[key];
@@ -1305,7 +1299,7 @@ client.on('interactionCreate', async interaction => {
         if (!ephemeralError) {
             try {
                 await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
-                activeMessages.set(userId, message);
+                activeMessages.set(userId, interaction.message);
             } catch (err) {}
         }
 
