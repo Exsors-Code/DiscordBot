@@ -1,0 +1,11 @@
+{
+  "watch": ["index.js", "database.js", "*.js"],
+  "ignore": ["*.sqlite", "*.sqlite-wal", "*.sqlite-shm", "backup_*.sqlite", "node_modules/", "emojis/"],
+  "ext": "js,json",
+  "delay": "1000",
+  "verbose": false,
+  "restartable": "rs",
+  "env": {
+    "NODE_ENV": "development"
+  }
+}
