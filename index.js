@@ -8,6 +8,7 @@ const {
 } = require('discord.js');
 const db = require('./database');
 const { handleAdminInteraction, handleMemberJoin } = require('./admin');
+const utility = require('./utility');
 const fs = require('fs');
 const path = require('path');
 
@@ -15,7 +16,9 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds, 
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions
     ] 
 });
 
@@ -890,12 +893,42 @@ client.on('guildMemberAdd', async (member) => {
     await handleMemberJoin(member);
 });
 
+// ==========================================
+// MESSAGE EVENT (Automod + Tag)
+// ==========================================
+client.on('messageCreate', async (message) => {
+    try {
+        await utility.runAutomod(message);
+        if (await utility.handleTagMessage(message)) return;
+    } catch (e) { console.error('messageCreate err:', e.message); }
+});
+
+// ==========================================
+// REACTION EVENT (Reaction Role + Starboard)
+// ==========================================
+client.on('messageReactionAdd', async (reaction, user) => {
+    try {
+        await utility.handleReactionAdd(reaction, user);
+        await utility.handleStarboard(reaction, user, true);
+    } catch (e) { console.error('reactionAdd err:', e.message); }
+});
+
+client.on('messageReactionRemove', async (reaction, user) => {
+    try {
+        await utility.handleReactionRemove(reaction, user);
+    } catch (e) { console.error('reactionRemove err:', e.message); }
+});
+
+// ==========================================
+// INTERACTION HANDLER
+// ==========================================
 client.on('interactionCreate', async interaction => {
     try {
-        // ==========================================
-        // 🎯 ADMIN HANDLER (dari admin.js)
-        // ==========================================
+        // Admin handler (dari admin.js)
         if (await handleAdminInteraction(interaction)) return;
+        
+        // Utility handler (dari utility.js)
+        if (await utility.handleUtilityInteraction(interaction)) return;
 
         const _userId = interaction.user.id;
         if (_userId) userLastInteraction.set(_userId, Date.now());
