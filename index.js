@@ -869,7 +869,7 @@ client.once('ready', async () => {
 
     setInterval(() => {
         try {
-            const src = path.join(__dirname, 'growexs.sqlite');
+            const src = path.join(__dirname, 'growcord.sqlite');
             const dst = path.join(__dirname, `backup_${Date.now()}.sqlite`);
             if (fs.existsSync(src)) { fs.copyFileSync(src, dst); console.log(`💾 Backup: ${path.basename(dst)}`); }
         } catch (e) { console.error('Backup gagal:', e.message); }
