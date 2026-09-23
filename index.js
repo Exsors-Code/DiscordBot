@@ -935,6 +935,7 @@ client.on('interactionCreate', async interaction => {
         if (await handleAdminInteraction(interaction)) return;
         // Utility handler
         if (await utility.handleUtilityInteraction(interaction)) return;
+
         // Admin handler (dari admin.js)
         if (await handleAdminInteraction(interaction)) return;
         
