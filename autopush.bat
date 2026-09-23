@@ -1,15 +1,15 @@
 @echo off
-title GrowExs Auto Push
+title GrowExs Auto Push (Safe)
 color 0A
 cd /d "%~dp0"
 
 echo ========================================
-echo   GrowExs Auto Push - Commit & Push
+echo   GrowExs Auto Push - Safe Mode
 echo ========================================
 echo.
 
 :loop
-REM === Set timestamp dengan format DD/MM/YYYY HH.MM.SS,MS ===
+REM Format timestamp
 for /f "tokens=1-4 delims=/:, " %%a in ("%date% %time%") do (
     set "DD=%%a"
     set "MM=%%b"
@@ -21,14 +21,29 @@ for /f "tokens=1-3 delims=.," %%a in ("%REST%") do (
     set "MI=%%b"
     set "SS=%%c"
 )
-REM Ambil milidetik dari %time:~-2%
 set "MS=%time:~-2%"
-
-REM Format: Exs - DD/MM/YYYY HH.MM.SS,MS
 set "COMMIT_MSG=Exs - %DD%/%MM%/%YYYY% %HH%.%MI%.%SS%,%MS%"
 
 echo [%COMMIT_MSG%] Cek perubahan...
+
+REM Bersihkan file yang di-ignore dari staging
+for /f "delims=" %%f in ('git diff --cached --name-only --diff-filter=ACM') do (
+    git check-ignore -q "%%f" 2>nul
+    if not errorlevel 1 (
+        echo   [BLOCKED] %%f
+        git reset HEAD "%%f" >nul 2>&1
+    )
+)
+
 git add .
+
+REM Cek lagi apakah masih ada yang lolos
+git diff --cached --name-only | findstr /i ".db$ .env$" >nul
+if not errorlevel 1 (
+    echo [WARN] Ada file .db/.env terdeteksi, unstage...
+    git reset HEAD *.db *.env 2>nul
+    git reset HEAD "*.db-shm" "*.db-wal" 2>nul
+)
 
 REM Cek apakah ada perubahan
 git diff --cached --quiet
@@ -43,14 +58,12 @@ git commit -m "%COMMIT_MSG%"
 git push
 
 if %errorlevel% neq 0 (
-    echo.
-    echo [ERROR] Push gagal! Cek koneksi/token.
+    echo [ERROR] Push gagal!
 ) else (
-    echo.
-    echo [OK] Berhasil push: %COMMIT_MSG%
+    echo [OK] Push: %COMMIT_MSG%
 )
 
 echo.
-echo Tunggu 30 detik sebelum cek lagi...
+echo Tunggu 30 detik...
 timeout /t 30 /nobreak >nul
 goto loop
