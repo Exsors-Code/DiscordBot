@@ -9,6 +9,7 @@ const {
 const db = require('./database');
 const { handleAdminInteraction, handleMemberJoin } = require('./admin');
 const utility = require('./utility');
+const { checkOwnerOnly, blockNonOwner } = require('./owner');
 const fs = require('fs');
 const path = require('path');
 
@@ -771,6 +772,13 @@ async function realtimeResetPlayer(targetUser) {
     userLastInteraction.delete(userId);
     userLastEdit.delete(userId);
 
+    try {
+        const allGuilds = client.guilds.cache;
+        for (const [gid] of allGuilds) {
+            db.removeUserThread(gid, userId);
+        }
+    } catch {}
+
     const success = db.resetUser(userId);
 
     if (oldMsg) {
@@ -790,6 +798,18 @@ async function realtimeResetPlayer(targetUser) {
 
     await refreshAllLeaderboards();
     return success;
+}
+
+async function invalidateOldPanel(userId, reason = 'Panel ini sudah tidak aktif. Buka panel baru dengan `/farming`.') {
+    const oldMsg = activeMessages.get(userId);
+    if (!oldMsg) return;
+    try {
+        await oldMsg.edit({
+            embeds: [new EmbedBuilder().setColor('#ED4245').setDescription(`❌ ${reason}`)],
+            components: []
+        });
+    } catch {}
+    activeMessages.delete(userId);
 }
 
 async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
@@ -869,8 +889,8 @@ client.once('ready', async () => {
 
     setInterval(() => {
         try {
-            const src = path.join(__dirname, 'growexs.sqlite');
-            const dst = path.join(__dirname, `backup_${Date.now()}.sqlite`);
+            const src = path.join(__dirname, 'growexs.db');
+            const dst = path.join(__dirname, `backup_${Date.now()}.db`);
             if (fs.existsSync(src)) { fs.copyFileSync(src, dst); console.log(`💾 Backup: ${path.basename(dst)}`); }
         } catch (e) { console.error('Backup gagal:', e.message); }
     }, 6 * 60 * 60 * 1000);
@@ -893,9 +913,6 @@ client.on('guildMemberAdd', async (member) => {
     await handleMemberJoin(member);
 });
 
-// ==========================================
-// MESSAGE EVENT (Automod + Tag)
-// ==========================================
 client.on('messageCreate', async (message) => {
     try {
         await utility.runAutomod(message);
@@ -903,9 +920,6 @@ client.on('messageCreate', async (message) => {
     } catch (e) { console.error('messageCreate err:', e.message); }
 });
 
-// ==========================================
-// REACTION EVENT (Reaction Role + Starboard)
-// ==========================================
 client.on('messageReactionAdd', async (reaction, user) => {
     try {
         await utility.handleReactionAdd(reaction, user);
@@ -924,21 +938,15 @@ client.on('messageReactionRemove', async (reaction, user) => {
 // ==========================================
 client.on('interactionCreate', async interaction => {
     try {
-        // 🔒 CEK OWNER
+        // 🔒 CEK OWNER — kalau bukan owner & command bukan public, blok
         if (!checkOwnerOnly(interaction)) {
             return blockNonOwner(interaction);
         }
 
         // Admin handler
         if (await handleAdminInteraction(interaction)) return;
-        // Utility handler
-        if (await utility.handleUtilityInteraction(interaction)) return;
-
-        // ... kode lama lanjut ...
-        // Admin handler (dari admin.js)
-        if (await handleAdminInteraction(interaction)) return;
         
-        // Utility handler (dari utility.js)
+        // Utility handler
         if (await utility.handleUtilityInteraction(interaction)) return;
 
         const _userId = interaction.user.id;
@@ -992,6 +1000,34 @@ client.on('interactionCreate', async interaction => {
                 if (autoFarmIntervals.has(userId) && !ud.autoFarm) ud.autoFarm = true;
                 userCache.set(userId, ud);
                 ud.currentView = 'main';
+
+                const existingMsg = activeMessages.get(userId);
+                if (existingMsg) {
+                    try {
+                        await existingMsg.fetch();
+                        await existingMsg.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+                        return interaction.editReply({ 
+                            content: `⚠️ Kamu sudah punya panel aktif di <#${existingMsg.channelId}>.\n> Panel diperbarui. Tidak bisa membuat panel baru.` 
+                        });
+                    } catch {
+                        activeMessages.delete(userId);
+                    }
+                }
+
+                const dbThread = db.getUserThread(interaction.guildId, userId);
+                if (dbThread) {
+                    try {
+                        const thread = await interaction.guild.channels.fetch(dbThread.threadId);
+                        if (thread && !thread.archived) {
+                            return interaction.editReply({ 
+                                content: `⚠️ Kamu sudah punya thread farming: ${thread}\n> Gunakan tombol **Start Farming** untuk masuk ke thread kamu.` 
+                            });
+                        }
+                    } catch {
+                        db.removeUserThread(interaction.guildId, userId);
+                    }
+                }
+
                 const msg = await interaction.editReply({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
                 activeMessages.set(userId, msg);
             }
@@ -1129,46 +1165,123 @@ client.on('interactionCreate', async interaction => {
         let ephemeralMsg = null;
         let ephemeralError = false;
 
+        // ==========================================
+        // START FARMING — ANTI EKSPLOITASI
+        // ==========================================
         if (id === 'start_farming') {
             if (!interaction.guild) return interaction.reply({ content: '❌ Hanya di server.', ephemeral: true });
             await interaction.deferReply({ ephemeral: true });
             const cfg = db.getGuildConfig(interaction.guildId);
             if (!cfg) return interaction.editReply({ content: '❌ Server belum di-setup. Jalankan `/setup`.' });
 
-            let threadId = userThreads.get(userId);
             let thread = null;
-            if (threadId) {
+            let threadSource = null;
+
+            const dbThread = db.getUserThread(interaction.guildId, userId);
+            if (dbThread) {
                 try {
-                    thread = await interaction.guild.channels.fetch(threadId);
-                    if (thread.archived) await thread.setArchived(false);
-                } catch { thread = null; userThreads.delete(userId); }
+                    thread = await interaction.guild.channels.fetch(dbThread.threadId);
+                    if (thread && thread.parentId === interaction.channelId) {
+                        if (thread.archived) {
+                            try { await thread.setArchived(false); } catch {}
+                        }
+                        threadSource = 'database';
+                        userThreads.set(userId, thread.id);
+                    } else {
+                        thread = null;
+                        db.removeUserThread(interaction.guildId, userId);
+                        userThreads.delete(userId);
+                    }
+                } catch {
+                    thread = null;
+                    db.removeUserThread(interaction.guildId, userId);
+                    userThreads.delete(userId);
+                }
             }
+
             if (!thread) {
+                const cachedId = userThreads.get(userId);
+                if (cachedId) {
+                    try {
+                        thread = await interaction.guild.channels.fetch(cachedId);
+                        if (thread && thread.parentId === interaction.channelId) {
+                            if (thread.archived) try { await thread.setArchived(false); } catch {}
+                            threadSource = 'cache';
+                            db.setUserThread(interaction.guildId, userId, thread.id, interaction.channelId);
+                        } else {
+                            thread = null;
+                            userThreads.delete(userId);
+                        }
+                    } catch {
+                        thread = null;
+                        userThreads.delete(userId);
+                    }
+                }
+            }
+
+            if (thread) {
+                const existingMsg = activeMessages.get(userId);
+                let panelValid = false;
+
+                if (existingMsg && existingMsg.channelId === thread.id) {
+                    try {
+                        await existingMsg.fetch();
+                        ud.currentView = 'main';
+                        await existingMsg.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+                        panelValid = true;
+                    } catch {
+                        activeMessages.delete(userId);
+                        panelValid = false;
+                    }
+                } else if (existingMsg) {
+                    await invalidateOldPanel(userId, 'Panel lama dipindah ke thread kamu.');
+                }
+
+                if (!panelValid) {
+                    ud.currentView = 'main';
+                    const msg = await thread.send({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+                    activeMessages.set(userId, msg);
+                }
+
+                console.log(`♻️ [${threadSource}] Redirect user ${interaction.user.username} ke thread lama`);
+
+                return interaction.editReply({ 
+                    content: `✅ Kamu sudah punya thread farming: ${thread}\n> Tidak bisa membuat thread baru. Klik tombol lagi untuk masuk.` 
+                });
+            }
+
+            try {
+                thread = await interaction.channel.threads.create({
+                    name: `🌱 ${interaction.user.username}`,
+                    autoArchiveDuration: 1440,
+                    type: ChannelType.PrivateThread,
+                    reason: `Farming thread untuk ${interaction.user.username}`
+                });
+                try { await thread.members.add(userId); } catch {}
+            } catch (err) {
                 try {
                     thread = await interaction.channel.threads.create({
                         name: `🌱 ${interaction.user.username}`,
                         autoArchiveDuration: 1440,
-                        type: ChannelType.PrivateThread
+                        type: ChannelType.PublicThread,
+                        reason: `Farming thread untuk ${interaction.user.username}`
                     });
-                    try { await thread.members.add(userId); } catch {}
-                    userThreads.set(userId, thread.id);
-                } catch (err) {
-                    try {
-                        thread = await interaction.channel.threads.create({
-                            name: `🌱 ${interaction.user.username}`,
-                            autoArchiveDuration: 1440,
-                            type: ChannelType.PublicThread
-                        });
-                        userThreads.set(userId, thread.id);
-                    } catch (err2) {
-                        return interaction.editReply({ content: `❌ Gagal buat thread: ${err2.message}` });
-                    }
+                } catch (err2) {
+                    return interaction.editReply({ content: `❌ Gagal buat thread: ${err2.message}` });
                 }
             }
+
+            userThreads.set(userId, thread.id);
+            db.setUserThread(interaction.guildId, userId, thread.id, interaction.channelId);
+
+            await invalidateOldPanel(userId, 'Panel lama dipindah ke thread baru kamu.');
+
             ud.currentView = 'main';
             const msg = await thread.send({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
             activeMessages.set(userId, msg);
-            return interaction.editReply({ content: `✅ Thread: ${thread}` });
+
+            console.log(`🆕 Thread baru: ${thread.name} (${interaction.user.username})`);
+            return interaction.editReply({ content: `✅ Thread farming dibuat: ${thread}` });
         }
 
         if (id.startsWith('customblock_')) {

@@ -1,5 +1,5 @@
 {
-  "name": "growcord-farming-bot",
+  "name": "growexs-farming-bot",
   "version": "1.0.0",
   "description": "Discord farming bot dengan sistem Growtopia-style",
   "main": "index.js",
@@ -7,7 +7,8 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "deploy": "node deploy-commands.js",
-    "upload-emojis": "node upload-emojis.js"
+    "auto": "node deploy-commands.js && node index.js",
+    "auto-dev": "node deploy-commands.js && nodemon index.js"
   },
   "keywords": [
     "discord",
