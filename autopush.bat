@@ -1,15 +1,15 @@
 @echo off
-title GrowExs Auto Push (Safe)
+title GrowExs Auto Push
 color 0A
 cd /d "%~dp0"
 
 echo ========================================
-echo   GrowExs Auto Push - Safe Mode
+echo   GrowExs Auto Push - Only When Changed
 echo ========================================
 echo.
 
 :loop
-REM Format timestamp
+REM === Buat timestamp format DD/MM/YYYY HH.MM.SS,MS ===
 for /f "tokens=1-4 delims=/:, " %%a in ("%date% %time%") do (
     set "DD=%%a"
     set "MM=%%b"
@@ -24,46 +24,57 @@ for /f "tokens=1-3 delims=.," %%a in ("%REST%") do (
 set "MS=%time:~-2%"
 set "COMMIT_MSG=Exs - %DD%/%MM%/%YYYY% %HH%.%MI%.%SS%,%MS%"
 
-echo [%COMMIT_MSG%] Cek perubahan...
+REM === Cek apakah ada perubahan SEBELUM add ===
+git diff --quiet && git diff --cached --quiet
+if %errorlevel%==0 (
+    REM Cek juga untracked files
+    for /f %%i in ('git ls-files --others --exclude-standard') do (
+        goto :has_changes
+    )
+    echo [%COMMIT_MSG%] Tidak ada perubahan. Skip.
+    echo.
+    timeout /t 15 /nobreak >nul
+    goto loop
+)
 
-REM Bersihkan file yang di-ignore dari staging
+:has_changes
+echo [%COMMIT_MSG%] Ada perubahan! Push...
+echo.
+
+REM === Stage semua & bersihkan file yang di-ignore dari staging ===
+git add .
+
+REM Unstage file yang di-ignore kalau ada yang lolos
 for /f "delims=" %%f in ('git diff --cached --name-only --diff-filter=ACM') do (
     git check-ignore -q "%%f" 2>nul
     if not errorlevel 1 (
-        echo   [BLOCKED] %%f
+        echo   [BLOCKED] %%f - di-unstage
         git reset HEAD "%%f" >nul 2>&1
     )
 )
 
-git add .
-
-REM Cek lagi apakah masih ada yang lolos
-git diff --cached --name-only | findstr /i ".db$ .env$" >nul
-if not errorlevel 1 (
-    echo [WARN] Ada file .db/.env terdeteksi, unstage...
-    git reset HEAD *.db *.env 2>nul
-    git reset HEAD "*.db-shm" "*.db-wal" 2>nul
-)
-
-REM Cek apakah ada perubahan
+REM === Cek lagi apakah masih ada yang di-stage ===
 git diff --cached --quiet
 if %errorlevel%==0 (
-    echo Tidak ada perubahan, skip.
-    timeout /t 30 /nobreak >nul
+    echo Semua file yang berubah di-ignore. Skip commit.
+    echo.
+    timeout /t 15 /nobreak >nul
     goto loop
 )
 
-echo Ada perubahan! Commit ^& push...
+REM === Commit & Push ===
 git commit -m "%COMMIT_MSG%"
 git push
 
 if %errorlevel% neq 0 (
-    echo [ERROR] Push gagal!
+    echo.
+    echo [ERROR] Push gagal! Cek koneksi/token.
 ) else (
-    echo [OK] Push: %COMMIT_MSG%
+    echo.
+    echo [OK] Push berhasil: %COMMIT_MSG%
 )
 
 echo.
-echo Tunggu 30 detik...
-timeout /t 30 /nobreak >nul
+echo Tunggu 15 detik...
+timeout /t 15 /nobreak >nul
 goto loop
