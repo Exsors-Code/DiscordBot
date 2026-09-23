@@ -1,7 +1,5 @@
-# Node
 node_modules/
-
-# Database
+.env
 *.db
 *.db-shm
 *.db-wal
@@ -9,17 +7,8 @@ node_modules/
 *.sqlite-shm
 *.sqlite-wal
 backup_*.db
-
-# Environment (RAHASIA!)
-.env
-
-# VS Code
+data.json
 .vscode/
-
-# OS
 .DS_Store
 Thumbs.db
-
-# Logs
 *.log
-npm-debug.log*
