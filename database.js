@@ -48,6 +48,16 @@ db.exec(`
     )
 `);
 
+db.exec(`
+    CREATE TABLE IF NOT EXISTS welcome_config (
+        guildId TEXT PRIMARY KEY,
+        channelId TEXT,
+        message TEXT DEFAULT 'Welcome {user} to **{server}**! 🎉',
+        enabled INTEGER DEFAULT 0,
+        embedColor TEXT DEFAULT '#57F287'
+    )
+`);
+
 console.log('✅ Database SQLite siap!');
 
 function rowToUser(row) {
@@ -104,7 +114,6 @@ function getUser(userId, username) {
 function saveUser(ud) {
     try {
         autoConvertLocks(ud);
-        
         db.prepare(`
             UPDATE users SET
                 username = ?,
@@ -137,9 +146,6 @@ function getAllUsers() {
     return rows.map(rowToUser);
 }
 
-// ==========================================
-// RESET PLAYER — hapus semua data user
-// ==========================================
 function resetUser(userId) {
     try {
         const exists = db.prepare('SELECT userId FROM users WHERE userId = ?').get(userId);
@@ -174,7 +180,30 @@ function removeGuildConfig(guildId) {
     db.prepare('DELETE FROM guild_config WHERE guildId = ?').run(guildId);
 }
 
+function getWelcomeConfig(guildId) {
+    return db.prepare('SELECT * FROM welcome_config WHERE guildId = ?').get(guildId) || null;
+}
+
+function setWelcomeConfig(guildId, data) {
+    db.prepare(`
+        INSERT INTO welcome_config (guildId, channelId, message, enabled, embedColor)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(guildId) DO UPDATE SET
+            channelId = excluded.channelId,
+            message = excluded.message,
+            enabled = excluded.enabled,
+            embedColor = excluded.embedColor
+    `).run(
+        guildId,
+        data.channelId || null,
+        data.message || 'Welcome {user} to **{server}**! 🎉',
+        data.enabled ? 1 : 0,
+        data.embedColor || '#57F287'
+    );
+}
+
 module.exports = {
     connectDB, getUser, saveUser, getAllUsers, resetUser,
-    getGuildConfig, setGuildConfig, updateLeaderboardMessage, getAllGuildConfigs, removeGuildConfig
+    getGuildConfig, setGuildConfig, updateLeaderboardMessage, getAllGuildConfigs, removeGuildConfig,
+    getWelcomeConfig, setWelcomeConfig
 };
