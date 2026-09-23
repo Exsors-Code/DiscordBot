@@ -1,8 +1,25 @@
+# Node
 node_modules/
-.env
+
+# Database
+*.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
-*.db
-backup_*.sqlite
-data.json
+backup_*.db
+
+# Environment (RAHASIA!)
+.env
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
