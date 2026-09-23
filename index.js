@@ -859,9 +859,6 @@ async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
     } catch (err) { console.error(`❌ Setup guild ${guild.name} gagal:`, err.message); }
 }
 
-// ==========================================
-// BOT READY
-// ==========================================
 client.once('ready', async () => {
     console.log(`✅ Bot ${client.user.tag} siap!`);
     console.log(`🌐 Terhubung ke ${client.guilds.cache.size} server`);
@@ -893,9 +890,6 @@ client.on('guildMemberAdd', async (member) => {
     await handleMemberJoin(member);
 });
 
-// ==========================================
-// INTERACTION HANDLER
-// ==========================================
 client.on('interactionCreate', async interaction => {
     try {
         // ==========================================
