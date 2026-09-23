@@ -48,11 +48,14 @@ db.exec(`
     )
 `);
 
+// ==========================================
+// 🆕 WELCOME CONFIG
+// ==========================================
 db.exec(`
     CREATE TABLE IF NOT EXISTS welcome_config (
         guildId TEXT PRIMARY KEY,
         channelId TEXT,
-        message TEXT DEFAULT 'Welcome {user} to **{server}**! 🎉',
+        message TEXT DEFAULT 'Welcome {user} ke **{server}**! 🎉',
         enabled INTEGER DEFAULT 0,
         embedColor TEXT DEFAULT '#57F287'
     )
@@ -180,6 +183,9 @@ function removeGuildConfig(guildId) {
     db.prepare('DELETE FROM guild_config WHERE guildId = ?').run(guildId);
 }
 
+// ==========================================
+// 🆕 WELCOME CONFIG CRUD
+// ==========================================
 function getWelcomeConfig(guildId) {
     return db.prepare('SELECT * FROM welcome_config WHERE guildId = ?').get(guildId) || null;
 }
@@ -196,7 +202,7 @@ function setWelcomeConfig(guildId, data) {
     `).run(
         guildId,
         data.channelId || null,
-        data.message || 'Welcome {user} to **{server}**! 🎉',
+        data.message || 'Welcome {user} ke **{server}**! 🎉',
         data.enabled ? 1 : 0,
         data.embedColor || '#57F287'
     );
