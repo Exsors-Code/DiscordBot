@@ -835,7 +835,7 @@ async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
                     }
                 } catch {}
             }
-            const embed = new EmbedBuilder().setColor('#57F287').setTitle('🌱 Growcord Farming')
+            const embed = new EmbedBuilder().setColor('#57F287').setTitle('🌱 GrowExs Farming')
                 .setDescription(
                     'Welcome to **Growcord**!\n\n' +
                     'Press **Start Farming** below or use `/farming` to open your private farming thread.\n' +
