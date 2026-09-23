@@ -30,6 +30,11 @@ process.on('uncaughtException', (error) => {
 const LEADERBOARD_UPDATE_INTERVAL = 10000;
 const EVENT_ROLE_IDS = ['1408101505008926840'];
 
+// ==========================================
+// 🚦 EDIT THROTTLE — biar tidak spam
+// ==========================================
+const EDIT_THROTTLE_MS = 3000; // Edit embed max tiap 3 detik
+
 const UNLIMITED_BLOCKS = ['dirt'];
 function isUnlimited(blockKey) { return UNLIMITED_BLOCKS.includes(blockKey); }
 
@@ -93,6 +98,8 @@ const guildMemberCacheTime = new Map();
 const MEMBER_CACHE_TTL = 5 * 60 * 1000;
 const userLastInteraction = new Map();
 const INTERACTION_LOCK_MS = 1500;
+// ⚡ NEW: track last edit time per user biar tidak spam
+const userLastEdit = new Map();
 
 function getTotalBlocks(ud) { return ud.blocks.dirt + ud.blocks.pog; }
 
@@ -658,10 +665,9 @@ function formatBreakLog(result, prefix = 'Auto') {
 }
 
 // ==========================================
-// ⚡ AUTO FARM
+// ⚡ AUTO FARM — dengan THROTTLE EDIT
 // ==========================================
 function startAutoFarm(userId) {
-    // Hancurkan interval lama
     const existingId = autoFarmIntervals.get(userId);
     if (existingId) { 
         clearInterval(existingId); 
@@ -674,22 +680,28 @@ function startAutoFarm(userId) {
     const interval = getAutoInterval(ud0);
     const myToken = (autoFarmTokens.get(userId) || 0) + 1;
     autoFarmTokens.set(userId, myToken);
+    
+    // Reset akumulator
+    ud0._acc = { gems: 0, xp: 0, blocks: 0, returned: 0, levels: 0, blockType: null };
+    
+    // Reset last edit biar langsung update pertama kali
+    userLastEdit.set(userId, 0);
 
     const intervalId = setInterval(async () => {
-        // ⚡ CHECK 1: Token berubah → stop
+        // CHECK 1: Token
         if (autoFarmTokens.get(userId) !== myToken) {
             clearInterval(intervalId);
             if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
             return;
         }
 
-        // ⚡ CHECK 2: Interval map bukan punya kita → stop
+        // CHECK 2: Interval map
         if (autoFarmIntervals.get(userId) !== intervalId) {
             clearInterval(intervalId);
             return;
         }
 
-        // ⚡ CHECK 3: Flag autoFarm false → stop
+        // CHECK 3: Flag
         const ud = userCache.get(userId);
         if (!ud || ud.autoFarm !== true) {
             clearInterval(intervalId);
@@ -700,18 +712,41 @@ function startAutoFarm(userId) {
         const lastInteract = userLastInteraction.get(userId) || 0;
         const isUserLocked = (Date.now() - lastInteract) < INTERACTION_LOCK_MS;
 
-        // Skip doBreak juga kalau user locked (biar tidak ada resource nambah)
         if (isUserLocked) return;
 
+        // ==========================================
+        // 🎯 DO BREAK + ACCUMULATE
+        // ==========================================
         const result = doBreak(ud);
-        if (result && !result.switched) ud.lastBreak = formatBreakLog(result, 'Auto');
+        if (result && !result.switched) {
+            // Akumulasi
+            if (!ud._acc) ud._acc = { gems: 0, xp: 0, blocks: 0, returned: 0, levels: 0, blockType: null };
+            ud._acc.gems += result.gemsGained;
+            ud._acc.xp += result.xpGained;
+            ud._acc.blocks += result.blocksBroken;
+            ud._acc.returned += result.returned;
+            ud._acc.levels += result.levelsGained;
+            ud._acc.blockType = result.blockType;
+        }
 
-        // ⚡ CHECK 4: Block habis → stop
+        // CHECK 4: Block habis
         if (ud.autoFarm === false) {
             autoFarmTokens.set(userId, (autoFarmTokens.get(userId) || 0) + 1);
             clearInterval(intervalId);
             if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
             db.saveUser(ud);
+            
+            // Flush akumulator sebelum stop
+            if (ud._acc && ud._acc.blocks > 0) {
+                const bd = SHOP_BLOCKS[ud._acc.blockType];
+                let msg = `Auto [${bd.name}]: -${ud._acc.blocks}`;
+                if (ud._acc.returned > 0) msg += ` (+${ud._acc.returned})`;
+                msg += ` → +${ud._acc.gems.toLocaleString()} 💰 / +${ud._acc.xp.toLocaleString()} XP`;
+                if (ud._acc.levels > 0) msg += ` 🎉 **LEVEL UP! +${ud._acc.levels} SP**`;
+                ud.lastBreak = msg;
+                ud._acc = { gems: 0, xp: 0, blocks: 0, returned: 0, levels: 0, blockType: null };
+            }
+            
             const m = activeMessages.get(userId);
             if (m) { try { await m.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); } catch {} }
             return;
@@ -722,10 +757,31 @@ function startAutoFarm(userId) {
             ud._lastSave = Date.now();
         }
 
-        // ⚡ CHECK 5: RE-CHECK SEBELUM EDIT
+        // ==========================================
+        // 🚦 THROTTLE EDIT — max tiap 3 detik
+        // ==========================================
+        const lastEdit = userLastEdit.get(userId) || 0;
+        if (Date.now() - lastEdit < EDIT_THROTTLE_MS) {
+            return; // skip edit, tapi break tetap jalan
+        }
+
+        // CHECK 5: RE-CHECK sebelum edit
         if (autoFarmTokens.get(userId) !== myToken) return;
         if (autoFarmIntervals.get(userId) !== intervalId) return;
         if (ud.autoFarm !== true) return;
+
+        // Flush akumulator ke lastBreak
+        if (ud._acc && ud._acc.blocks > 0) {
+            const bd = SHOP_BLOCKS[ud._acc.blockType];
+            let msg = `Auto [${bd.name}]: -${ud._acc.blocks}`;
+            if (ud._acc.returned > 0) msg += ` (+${ud._acc.returned})`;
+            msg += ` → +${ud._acc.gems.toLocaleString()} 💰 / +${ud._acc.xp.toLocaleString()} XP`;
+            if (ud._acc.levels > 0) msg += ` 🎉 **LEVEL UP! +${ud._acc.levels} SP**`;
+            ud.lastBreak = msg;
+            ud._acc = { gems: 0, xp: 0, blocks: 0, returned: 0, levels: 0, blockType: null };
+        }
+
+        userLastEdit.set(userId, Date.now());
 
         const msg = activeMessages.get(userId);
         if (msg) {
@@ -750,6 +806,10 @@ function stopAutoFarm(userId) {
         clearInterval(id); 
         autoFarmIntervals.delete(userId); 
     }
+    // Reset throttle & accumulator
+    userLastEdit.delete(userId);
+    const ud = userCache.get(userId);
+    if (ud) ud._acc = null;
 }
 
 function buildBuyModal(title, customId, priceInfo) {
@@ -779,6 +839,7 @@ async function realtimeResetPlayer(targetUser) {
     activeMessages.delete(userId);
     userThreads.delete(userId);
     userLastInteraction.delete(userId);
+    userLastEdit.delete(userId);
 
     const success = db.resetUser(userId);
 
@@ -969,7 +1030,6 @@ client.on('interactionCreate', async interaction => {
             if (interaction.commandName === 'farming') {
                 await interaction.deferReply();
                 const ud = loadUser(userId, interaction.user.username);
-                // FORCE SYNC: kalau ada interval jalan, tapi flag false → matikan
                 if (autoFarmIntervals.has(userId) && !ud.autoFarm) {
                     ud.autoFarm = true;
                 }
@@ -1021,7 +1081,6 @@ client.on('interactionCreate', async interaction => {
                 let ud = userCache.get(userId);
                 if (!ud) { ud = loadUser(userId, interaction.user.username); userCache.set(userId, ud); }
                 
-                // Stop auto farm karena ini interaksi non-toggle
                 if (autoFarmIntervals.has(userId)) {
                     stopAutoFarm(userId);
                     ud.autoFarm = false;
@@ -1054,7 +1113,6 @@ client.on('interactionCreate', async interaction => {
             const ud = loadUser(userId, interaction.user.username);
             userCache.set(userId, ud);
 
-            // Stop auto farm karena ini interaksi non-toggle
             if (autoFarmIntervals.has(userId)) {
                 stopAutoFarm(userId);
                 ud.autoFarm = false;
@@ -1110,17 +1168,11 @@ client.on('interactionCreate', async interaction => {
         }
         ud.username = interaction.user.username;
 
-        // ==========================================
-        // 🎯 FIX UTAMA: PAKAI autoFarmIntervals.has() SEBAGAI TRUTH
-        // ==========================================
         const isAutoRunning = autoFarmIntervals.has(userId);
-        
-        // Sync flag dengan reality
         if (ud.autoFarm !== isAutoRunning) {
             ud.autoFarm = isAutoRunning;
         }
 
-        // Kalau tombol selain toggle → matikan auto farm (PASTI stop kalau ada interval)
         if (id !== 'btn_toggle_auto' && isAutoRunning) {
             stopAutoFarm(userId);
             ud.autoFarm = false;
@@ -1202,17 +1254,14 @@ client.on('interactionCreate', async interaction => {
         else if (id === 'nav_event')        ud.currentView = 'event';
 
         else if (id === 'btn_toggle_auto') {
-            // Pakai autoFarmIntervals.has() sebagai truth
             const isCurrentlyRunning = autoFarmIntervals.has(userId);
             
             if (isCurrentlyRunning) {
-                // STOP
                 stopAutoFarm(userId);
                 ud.autoFarm = false;
                 ud.lastBreak = 'Auto Farm dimatikan.';
                 console.log(`⏹️ Auto Farm OFF via toggle (user: ${interaction.user.username})`);
             } else {
-                // START
                 if (getTotalBlocks(ud) <= 0) {
                     ephemeralMsg = '❌ Semua block habis!';
                     ephemeralError = true;
@@ -1318,7 +1367,6 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        // ⚡ FINAL SAFETY: kalau ada interval tapi flag false → stop
         if (ud.autoFarm === false && autoFarmIntervals.has(userId)) {
             stopAutoFarm(userId);
         }
