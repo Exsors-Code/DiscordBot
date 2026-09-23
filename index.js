@@ -7,6 +7,7 @@ const {
     PermissionFlagsBits
 } = require('discord.js');
 const db = require('./database');
+const { handleAdminInteraction, handleMemberJoin } = require('./admin');
 const fs = require('fs');
 const path = require('path');
 
@@ -29,11 +30,7 @@ process.on('uncaughtException', (error) => {
 
 const LEADERBOARD_UPDATE_INTERVAL = 10000;
 const EVENT_ROLE_IDS = ['1408101505008926840'];
-
-// ==========================================
-// 🚦 EDIT THROTTLE — biar tidak spam
-// ==========================================
-const EDIT_THROTTLE_MS = 3000; // Edit embed max tiap 3 detik
+const EDIT_THROTTLE_MS = 3000;
 
 const UNLIMITED_BLOCKS = ['dirt'];
 function isUnlimited(blockKey) { return UNLIMITED_BLOCKS.includes(blockKey); }
@@ -98,7 +95,6 @@ const guildMemberCacheTime = new Map();
 const MEMBER_CACHE_TTL = 5 * 60 * 1000;
 const userLastInteraction = new Map();
 const INTERACTION_LOCK_MS = 1500;
-// ⚡ NEW: track last edit time per user biar tidak spam
 const userLastEdit = new Map();
 
 function getTotalBlocks(ud) { return ud.blocks.dirt + ud.blocks.pog; }
@@ -159,7 +155,7 @@ function formatStock(blockKey, amount) {
 }
 
 // ==========================================
-// MAIN
+// EMBEDS
 // ==========================================
 function mainEmbed(ud) {
     const tool = ud.equippedTool ? SHOP_TOOLS[ud.equippedTool] : null;
@@ -446,10 +442,7 @@ function toolsEmbed(ud) {
     const tool = ud.equippedTool ? SHOP_TOOLS[ud.equippedTool] : null;
     return new EmbedBuilder().setColor('#3498DB').setTitle('🛠️ Tools')
         .setDescription(
-            (tool 
-                ? `**Equipped Tool:** ${tool.emoji} **${tool.name} x${tool.multiplier}**`
-                : '*Tidak ada tool yang di-equip*'
-            ) +
+            (tool ? `**Equipped Tool:** ${tool.emoji} **${tool.name} x${tool.multiplier}**` : '*Tidak ada tool yang di-equip*') +
             `\n\n*Tools permanently multiply both Gems and XP.*`
         );
 }
@@ -459,22 +452,12 @@ function toolsButtons(ud) {
         const options = ud.ownedTools.map(key => {
             const t = SHOP_TOOLS[key];
             return new StringSelectMenuOptionBuilder()
-                .setLabel(t.name)
-                .setValue(`equip_${key}`)
+                .setLabel(t.name).setValue(`equip_${key}`)
                 .setDescription(`x${t.multiplier} Gems • ${t.blocksPerBreak} far`)
                 .setDefault(ud.equippedTool === key);
         });
-        options.push(
-            new StringSelectMenuOptionBuilder()
-                .setLabel('Unequip')
-                .setValue('unequip')
-                .setDescription('Lepas tool (x1)')
-                .setDefault(!ud.equippedTool)
-        );
-        const select = new StringSelectMenuBuilder()
-            .setCustomId('select_tool')
-            .setPlaceholder('Pilih tool')
-            .addOptions(options);
+        options.push(new StringSelectMenuOptionBuilder().setLabel('Unequip').setValue('unequip').setDescription('Lepas tool (x1)').setDefault(!ud.equippedTool));
+        const select = new StringSelectMenuBuilder().setCustomId('select_tool').setPlaceholder('Pilih tool').addOptions(options);
         rows.push(new ActionRowBuilder().addComponents(select));
     }
     rows.push(new ActionRowBuilder().addComponents(
@@ -516,12 +499,7 @@ async function generateLeaderboardEmbed(guildId) {
 
     const entries = allUsers
         .filter(ud => memberIds.has(ud.userId))
-        .map(ud => ({
-            username: ud.username,
-            locks: ud.locks,
-            level: ud.level,
-            totalValue: getTotalLockValue(ud)
-        }))
+        .map(ud => ({ username: ud.username, locks: ud.locks, level: ud.level, totalValue: getTotalLockValue(ud) }))
         .filter(e => e.totalValue > 0);
 
     entries.sort((a, b) => b.totalValue - a.totalValue);
@@ -535,18 +513,12 @@ async function generateLeaderboardEmbed(guildId) {
         if (e.locks.dl > 0) lockParts.push(`🔸 ${e.locks.dl}`);
         if (e.locks.bgl > 0) lockParts.push(`🔶 ${e.locks.bgl}`);
         if (e.locks.bglb > 0) lockParts.push(`🌟 ${e.locks.bglb}`);
-        return (
-            `${rank} **${e.username}** (Lv.${e.level})\n` +
-            `> ${lockParts.join(' | ')}\n` +
-            `> 💰 Total: **${e.totalValue.toLocaleString()} WL**`
-        );
+        return `${rank} **${e.username}** (Lv.${e.level})\n> ${lockParts.join(' | ')}\n> 💰 Total: **${e.totalValue.toLocaleString()} WL**`;
     });
 
     if (lines.length === 0) lines.push('*Belum ada pemain dengan lock di server ini.*');
 
-    return new EmbedBuilder()
-        .setColor('#FFD700')
-        .setTitle(`🏆 Leaderboard — ${guildName}`)
+    return new EmbedBuilder().setColor('#FFD700').setTitle(`🏆 Leaderboard — ${guildName}`)
         .setDescription(lines.join('\n\n'))
         .setFooter({ text: `Total ${entries.length} pemain • Update tiap ${LEADERBOARD_UPDATE_INTERVAL / 1000} detik` })
         .setTimestamp();
@@ -617,9 +589,7 @@ function doBreak(ud) {
 
     const blocksToBreak = unlimited ? farPower : Math.min(farPower, ud.blocks[blockType]);
     
-    if (!unlimited) {
-        ud.blocks[blockType] -= blocksToBreak;
-    }
+    if (!unlimited) ud.blocks[blockType] -= blocksToBreak;
 
     const toolMult = tool ? tool.multiplier : 1;
     const gemSkillMult = 1 + (ud.skills.gem_hunter * 0.10);
@@ -664,15 +634,9 @@ function formatBreakLog(result, prefix = 'Auto') {
     return msg;
 }
 
-// ==========================================
-// ⚡ AUTO FARM — dengan THROTTLE EDIT
-// ==========================================
 function startAutoFarm(userId) {
     const existingId = autoFarmIntervals.get(userId);
-    if (existingId) { 
-        clearInterval(existingId); 
-        autoFarmIntervals.delete(userId); 
-    }
+    if (existingId) { clearInterval(existingId); autoFarmIntervals.delete(userId); }
 
     const ud0 = userCache.get(userId);
     if (!ud0) return;
@@ -681,27 +645,17 @@ function startAutoFarm(userId) {
     const myToken = (autoFarmTokens.get(userId) || 0) + 1;
     autoFarmTokens.set(userId, myToken);
     
-    // Reset akumulator
     ud0._acc = { gems: 0, xp: 0, blocks: 0, returned: 0, levels: 0, blockType: null };
-    
-    // Reset last edit biar langsung update pertama kali
     userLastEdit.set(userId, 0);
 
     const intervalId = setInterval(async () => {
-        // CHECK 1: Token
         if (autoFarmTokens.get(userId) !== myToken) {
             clearInterval(intervalId);
             if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
             return;
         }
+        if (autoFarmIntervals.get(userId) !== intervalId) { clearInterval(intervalId); return; }
 
-        // CHECK 2: Interval map
-        if (autoFarmIntervals.get(userId) !== intervalId) {
-            clearInterval(intervalId);
-            return;
-        }
-
-        // CHECK 3: Flag
         const ud = userCache.get(userId);
         if (!ud || ud.autoFarm !== true) {
             clearInterval(intervalId);
@@ -711,15 +665,10 @@ function startAutoFarm(userId) {
 
         const lastInteract = userLastInteraction.get(userId) || 0;
         const isUserLocked = (Date.now() - lastInteract) < INTERACTION_LOCK_MS;
-
         if (isUserLocked) return;
 
-        // ==========================================
-        // 🎯 DO BREAK + ACCUMULATE
-        // ==========================================
         const result = doBreak(ud);
         if (result && !result.switched) {
-            // Akumulasi
             if (!ud._acc) ud._acc = { gems: 0, xp: 0, blocks: 0, returned: 0, levels: 0, blockType: null };
             ud._acc.gems += result.gemsGained;
             ud._acc.xp += result.xpGained;
@@ -729,14 +678,11 @@ function startAutoFarm(userId) {
             ud._acc.blockType = result.blockType;
         }
 
-        // CHECK 4: Block habis
         if (ud.autoFarm === false) {
             autoFarmTokens.set(userId, (autoFarmTokens.get(userId) || 0) + 1);
             clearInterval(intervalId);
             if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
             db.saveUser(ud);
-            
-            // Flush akumulator sebelum stop
             if (ud._acc && ud._acc.blocks > 0) {
                 const bd = SHOP_BLOCKS[ud._acc.blockType];
                 let msg = `Auto [${bd.name}]: -${ud._acc.blocks}`;
@@ -744,9 +690,8 @@ function startAutoFarm(userId) {
                 msg += ` → +${ud._acc.gems.toLocaleString()} 💰 / +${ud._acc.xp.toLocaleString()} XP`;
                 if (ud._acc.levels > 0) msg += ` 🎉 **LEVEL UP! +${ud._acc.levels} SP**`;
                 ud.lastBreak = msg;
-                ud._acc = { gems: 0, xp: 0, blocks: 0, returned: 0, levels: 0, blockType: null };
+                ud._acc = null;
             }
-            
             const m = activeMessages.get(userId);
             if (m) { try { await m.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); } catch {} }
             return;
@@ -757,20 +702,13 @@ function startAutoFarm(userId) {
             ud._lastSave = Date.now();
         }
 
-        // ==========================================
-        // 🚦 THROTTLE EDIT — max tiap 3 detik
-        // ==========================================
         const lastEdit = userLastEdit.get(userId) || 0;
-        if (Date.now() - lastEdit < EDIT_THROTTLE_MS) {
-            return; // skip edit, tapi break tetap jalan
-        }
+        if (Date.now() - lastEdit < EDIT_THROTTLE_MS) return;
 
-        // CHECK 5: RE-CHECK sebelum edit
         if (autoFarmTokens.get(userId) !== myToken) return;
         if (autoFarmIntervals.get(userId) !== intervalId) return;
         if (ud.autoFarm !== true) return;
 
-        // Flush akumulator ke lastBreak
         if (ud._acc && ud._acc.blocks > 0) {
             const bd = SHOP_BLOCKS[ud._acc.blockType];
             let msg = `Auto [${bd.name}]: -${ud._acc.blocks}`;
@@ -798,15 +736,10 @@ function startAutoFarm(userId) {
 
     autoFarmIntervals.set(userId, intervalId);
 }
-
 function stopAutoFarm(userId) {
     autoFarmTokens.set(userId, (autoFarmTokens.get(userId) || 0) + 1);
     const id = autoFarmIntervals.get(userId);
-    if (id) { 
-        clearInterval(id); 
-        autoFarmIntervals.delete(userId); 
-    }
-    // Reset throttle & accumulator
+    if (id) { clearInterval(id); autoFarmIntervals.delete(userId); }
     userLastEdit.delete(userId);
     const ud = userCache.get(userId);
     if (ud) ud._acc = null;
@@ -815,12 +748,9 @@ function stopAutoFarm(userId) {
 function buildBuyModal(title, customId, priceInfo) {
     const modal = new ModalBuilder().setCustomId(customId).setTitle(title);
     const input = new TextInputBuilder()
-        .setCustomId('quantity')
-        .setLabel(priceInfo || 'Jumlah')
-        .setStyle(TextInputStyle.Short)
-        .setPlaceholder('Contoh: 500')
-        .setRequired(true)
-        .setMaxLength(10);
+        .setCustomId('quantity').setLabel(priceInfo || 'Jumlah')
+        .setStyle(TextInputStyle.Short).setPlaceholder('Contoh: 500')
+        .setRequired(true).setMaxLength(10);
     modal.addComponents(new ActionRowBuilder().addComponents(input));
     return modal;
 }
@@ -829,12 +759,9 @@ async function realtimeResetPlayer(targetUser) {
     const userId = targetUser.id;
     const username = targetUser.username;
 
-    if (autoFarmIntervals.has(userId)) {
-        stopAutoFarm(userId);
-    }
+    if (autoFarmIntervals.has(userId)) stopAutoFarm(userId);
 
     const oldMsg = activeMessages.get(userId);
-
     userCache.delete(userId);
     activeMessages.delete(userId);
     userThreads.delete(userId);
@@ -845,31 +772,17 @@ async function realtimeResetPlayer(targetUser) {
 
     if (oldMsg) {
         try {
-            const resetEmbed = new EmbedBuilder()
-                .setColor('#ED4245')
-                .setTitle('♻️ Akun Direset')
+            const resetEmbed = new EmbedBuilder().setColor('#ED4245').setTitle('♻️ Akun Direset')
                 .setDescription(
                     `**@${username}** telah direset oleh admin.\n\n` +
-                    `> 🏆 Level: **1**\n` +
-                    `> 💰 Gems: **500.000**\n` +
-                    `> 🟫 Dirt: **∞ (Unlimited)**\n` +
-                    `> 🥔 POG: **0**\n` +
-                    `> 🔒 WL: **1**\n\n` +
+                    `> 🏆 Level: **1**\n> 💰 Gems: **500.000**\n> 🟫 Dirt: **∞ (Unlimited)**\n> 🥔 POG: **0**\n> 🔒 WL: **1**\n\n` +
                     `*Klik tombol di bawah untuk mulai dari awal.*`
-                )
-                .setTimestamp();
-
+                ).setTimestamp();
             const resetRow = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId('nav_main')
-                    .setLabel('🔄 Mulai Ulang')
-                    .setStyle(ButtonStyle.Success)
+                new ButtonBuilder().setCustomId('nav_main').setLabel('🔄 Mulai Ulang').setStyle(ButtonStyle.Success)
             );
-
             await oldMsg.edit({ embeds: [resetEmbed], components: [resetRow] });
-        } catch (e) {
-            console.log(`⚠️ Gagal update message reset ${username}: ${e.message}`);
-        }
+        } catch (e) {}
     }
 
     await refreshAllLeaderboards();
@@ -904,9 +817,7 @@ async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
             };
             try {
                 const active = await panelChannel.threads.fetchActive();
-                for (const t of active.threads.values()) {
-                    if (t.name.startsWith('🌱')) await safeDelete(t);
-                }
+                for (const t of active.threads.values()) if (t.name.startsWith('🌱')) await safeDelete(t);
             } catch {}
             for (const type of ['public', 'private']) {
                 try {
@@ -914,9 +825,7 @@ async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
                     while (keepGoing) {
                         const arch = await panelChannel.threads.fetchArchived({ type, limit: 100, before });
                         if (!arch.threads || arch.threads.size === 0) break;
-                        for (const t of arch.threads.values()) {
-                            if (t.name.startsWith('🌱')) await safeDelete(t);
-                        }
+                        for (const t of arch.threads.values()) if (t.name.startsWith('🌱')) await safeDelete(t);
                         const last = arch.threads.last()?.archivedAt;
                         if (!last || last === before) keepGoing = false;
                         else before = last;
@@ -929,8 +838,7 @@ async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
                     'Press **Start Farming** below or use `/farming` to open your private farming thread.\n' +
                     'Your thread contains your Farm, Shop, Items, Profile, Tools, and Skills menus.\n\n' +
                     'Your existing private farm thread will be reused whenever you run `/farming` again.'
-                )
-                .setFooter({ text: 'Growcord Farm Guide' });
+                ).setFooter({ text: 'Growcord Farm Guide' });
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('start_farming').setLabel('Start Farming').setEmoji('📖').setStyle(ButtonStyle.Success)
             );
@@ -941,9 +849,7 @@ async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
         const lbChannel = await client.channels.fetch(leaderboardChannelId).catch(() => null);
         if (lbChannel) {
             const msgs = await lbChannel.messages.fetch({ limit: 30 }).catch(() => new Map());
-            for (const m of msgs.values()) {
-                if (m.author.id === client.user.id) await m.delete().catch(() => {});
-            }
+            for (const m of msgs.values()) if (m.author.id === client.user.id) await m.delete().catch(() => {});
             const embed = await generateLeaderboardEmbed(guild.id);
             const msg = await lbChannel.send({ embeds: [embed] });
             guildLeaderboards.set(guild.id, msg);
@@ -953,6 +859,9 @@ async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
     } catch (err) { console.error(`❌ Setup guild ${guild.name} gagal:`, err.message); }
 }
 
+// ==========================================
+// BOT READY
+// ==========================================
 client.once('ready', async () => {
     console.log(`✅ Bot ${client.user.tag} siap!`);
     console.log(`🌐 Terhubung ke ${client.guilds.cache.size} server`);
@@ -980,8 +889,20 @@ client.on('guildCreate', (guild) => {
     console.log(`➕ Join guild: ${guild.name} (${guild.id})`);
 });
 
+client.on('guildMemberAdd', async (member) => {
+    await handleMemberJoin(member);
+});
+
+// ==========================================
+// INTERACTION HANDLER
+// ==========================================
 client.on('interactionCreate', async interaction => {
     try {
+        // ==========================================
+        // 🎯 ADMIN HANDLER (dari admin.js)
+        // ==========================================
+        if (await handleAdminInteraction(interaction)) return;
+
         const _userId = interaction.user.id;
         if (_userId) userLastInteraction.set(_userId, Date.now());
 
@@ -1030,9 +951,7 @@ client.on('interactionCreate', async interaction => {
             if (interaction.commandName === 'farming') {
                 await interaction.deferReply();
                 const ud = loadUser(userId, interaction.user.username);
-                if (autoFarmIntervals.has(userId) && !ud.autoFarm) {
-                    ud.autoFarm = true;
-                }
+                if (autoFarmIntervals.has(userId) && !ud.autoFarm) ud.autoFarm = true;
                 userCache.set(userId, ud);
                 ud.currentView = 'main';
                 const msg = await interaction.editReply({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
@@ -1068,7 +987,6 @@ client.on('interactionCreate', async interaction => {
                         content: `✅ Event diupdate!\n> 💰 Gems & 📈 XP: **x${gemsMult}**\n> 🟫 Blocks: **x${blocksMult}**` 
                     });
                 } catch (innerErr) {
-                    console.error('❌ /customevent error:', innerErr);
                     return interaction.editReply({ content: `❌ Gagal: ${innerErr.message}` }).catch(() => {});
                 }
             }
@@ -1090,15 +1008,10 @@ client.on('interactionCreate', async interaction => {
                 
                 const value = interaction.values[0];
                 let msg = '';
-                if (value === 'unequip') {
-                    ud.equippedTool = null;
-                    msg = '✅ Tool di-unequip.';
-                } else if (value.startsWith('equip_')) {
+                if (value === 'unequip') { ud.equippedTool = null; msg = '✅ Tool di-unequip.'; }
+                else if (value.startsWith('equip_')) {
                     const key = value.replace('equip_', '');
-                    if (ud.ownedTools.includes(key)) {
-                        ud.equippedTool = key;
-                        msg = `✅ **${SHOP_TOOLS[key].name}** di-equip!`;
-                    }
+                    if (ud.ownedTools.includes(key)) { ud.equippedTool = key; msg = `✅ **${SHOP_TOOLS[key].name}** di-equip!`; }
                 }
                 db.saveUser(ud);
                 await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
@@ -1126,7 +1039,6 @@ client.on('interactionCreate', async interaction => {
             }
 
             let responseMsg = '';
-
             if (interaction.customId.startsWith('modal_buyblock_')) {
                 const key = interaction.customId.replace('modal_buyblock_', '');
                 const b = SHOP_BLOCKS[key];
@@ -1162,16 +1074,11 @@ client.on('interactionCreate', async interaction => {
         const userId = interaction.user.id;
 
         let ud = userCache.get(userId);
-        if (!ud) {
-            ud = loadUser(userId, interaction.user.username);
-            userCache.set(userId, ud);
-        }
+        if (!ud) { ud = loadUser(userId, interaction.user.username); userCache.set(userId, ud); }
         ud.username = interaction.user.username;
 
         const isAutoRunning = autoFarmIntervals.has(userId);
-        if (ud.autoFarm !== isAutoRunning) {
-            ud.autoFarm = isAutoRunning;
-        }
+        if (ud.autoFarm !== isAutoRunning) ud.autoFarm = isAutoRunning;
 
         if (id !== 'btn_toggle_auto' && isAutoRunning) {
             stopAutoFarm(userId);
@@ -1255,7 +1162,6 @@ client.on('interactionCreate', async interaction => {
 
         else if (id === 'btn_toggle_auto') {
             const isCurrentlyRunning = autoFarmIntervals.has(userId);
-            
             if (isCurrentlyRunning) {
                 stopAutoFarm(userId);
                 ud.autoFarm = false;
@@ -1346,10 +1252,7 @@ client.on('interactionCreate', async interaction => {
             const lvl = ud.skills[key];
             const cost = getSkillUpgradeCost(lvl);
 
-            if (lvl >= s.maxLevel) { 
-                ephemeralMsg = `⚠️ **${s.name}** sudah MAX!`; 
-                ephemeralError = true; 
-            }
+            if (lvl >= s.maxLevel) { ephemeralMsg = `⚠️ **${s.name}** sudah MAX!`; ephemeralError = true; }
             else if (ud.skillPoints < cost) { 
                 ephemeralMsg = `❌ SP tidak cukup! Butuh **${cost} SP**, kamu punya **${ud.skillPoints} SP**.`; 
                 ephemeralError = true; 
@@ -1357,7 +1260,6 @@ client.on('interactionCreate', async interaction => {
             else {
                 ud.skillPoints -= cost;
                 ud.skills[key]++;
-                
                 db.saveUser(ud);
                 ephemeralMsg = `✅ ${s.emoji} **${s.name}** → Lv.**${ud.skills[key]}/${s.maxLevel}** (-${cost} SP, sisa ${ud.skillPoints} SP)`;
                 if (key === 'mining_speed') {
@@ -1367,9 +1269,7 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        if (ud.autoFarm === false && autoFarmIntervals.has(userId)) {
-            stopAutoFarm(userId);
-        }
+        if (ud.autoFarm === false && autoFarmIntervals.has(userId)) stopAutoFarm(userId);
 
         if (!ephemeralError) {
             try {
