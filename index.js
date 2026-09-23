@@ -924,8 +924,6 @@ client.on('messageReactionRemove', async (reaction, user) => {
 // ==========================================
 client.on('interactionCreate', async interaction => {
     try {
-        client.on('interactionCreate', async interaction => {
-    try {
         // 🔒 CEK OWNER
         if (!checkOwnerOnly(interaction)) {
             return blockNonOwner(interaction);
