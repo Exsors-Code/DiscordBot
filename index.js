@@ -837,11 +837,11 @@ async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
             }
             const embed = new EmbedBuilder().setColor('#57F287').setTitle('🌱 GrowExs Farming')
                 .setDescription(
-                    'Welcome to **Growcord**!\n\n' +
+                    'Welcome to **GrowExs**!\n\n' +
                     'Press **Start Farming** below or use `/farming` to open your private farming thread.\n' +
                     'Your thread contains your Farm, Shop, Items, Profile, Tools, and Skills menus.\n\n' +
                     'Your existing private farm thread will be reused whenever you run `/farming` again.'
-                ).setFooter({ text: 'Growcord Farm Guide' });
+                ).setFooter({ text: 'GrowExs Farm Guide' });
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('start_farming').setLabel('Start Farming').setEmoji('📖').setStyle(ButtonStyle.Success)
             );
