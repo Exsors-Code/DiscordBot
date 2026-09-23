@@ -6,7 +6,7 @@
 // Cara ambil: Discord Settings → Advanced → Developer Mode ON
 // Lalu klik kanan avatar sendiri → Copy User ID
 const OWNER_IDS = [
-    'MASUKKAN_USER_ID_KAMU_DISINI',
+    '1113777699014582294',
     // Bisa tambah lebih dari 1 owner, pisahkan koma:
     // '123456789012345678',
     // '987654321098765432'
