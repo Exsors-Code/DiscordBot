@@ -114,6 +114,17 @@ const ADMIN_COMMANDS = [
         .addSubcommand(s => s.setName('status').setDescription('Status'))
         .toJSON(),
 
+    // ===== AUTOROLE =====
+    new SlashCommandBuilder().setName('autorole').setDescription('🎁 Autorole — role otomatis untuk member baru')
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+        .addSubcommand(s => s.setName('set').setDescription('Set role otomatis')
+            .addRoleOption(o => o.setName('role').setDescription('Role').setRequired(true)))
+        .addSubcommand(s => s.setName('disable').setDescription('Nonaktifkan autorole'))
+        .addSubcommand(s => s.setName('status').setDescription('Lihat config'))
+        .addSubcommand(s => s.setName('apply').setDescription('Berikan role ke SEMUA member'))
+        .addSubcommand(s => s.setName('remove').setDescription('Hapus config autorole'))
+        .toJSON(),
+
     // ===== INFO =====
     new SlashCommandBuilder().setName('serverinfo').setDescription('ℹ️ Info server').toJSON(),
     new SlashCommandBuilder().setName('userinfo').setDescription('ℹ️ Info user')
@@ -122,7 +133,7 @@ const ADMIN_COMMANDS = [
 ];
 
 // ==========================================
-// 🎨 HELPER
+// HELPER
 // ==========================================
 function parseColor(hex) {
     if (!hex) return null;
@@ -163,7 +174,7 @@ function buildWelcomeMessage(template, member, guild) {
 }
 
 // ==========================================
-// 🔒 LOCK
+// LOCK
 // ==========================================
 async function handleLock(interaction) {
     const cmd = interaction.commandName;
@@ -198,7 +209,6 @@ async function handleLock(interaction) {
         }
 
         console.log(`🔒 ${cmd} → #${ch.name} oleh ${interaction.user.username}`);
-
         const colors = { lock: '#ED4245', unlock: '#57F287', lockview: '#ED4245', unlockview: '#57F287' };
         const titles = { lock: '🔒 Locked', unlock: '🔓 Unlocked', lockview: '👁️ View Locked', unlockview: '👁️‍🗨️ View Unlocked' };
 
@@ -223,7 +233,7 @@ async function handleLock(interaction) {
 }
 
 // ==========================================
-// 🎭 ROLE
+// ROLE
 // ==========================================
 async function handleRole(interaction) {
     const sub = interaction.options.getSubcommand();
@@ -309,7 +319,7 @@ async function handleRole(interaction) {
 }
 
 // ==========================================
-// 🔨 MODERATION
+// MODERATION
 // ==========================================
 async function handleMod(interaction) {
     const cmd = interaction.commandName;
@@ -369,7 +379,7 @@ async function handleMod(interaction) {
 }
 
 // ==========================================
-// 🐢 SLOWMODE + 🗑️ CLEAR
+// SLOWMODE + CLEAR
 // ==========================================
 async function handleUtil(interaction) {
     const cmd = interaction.commandName;
@@ -397,7 +407,7 @@ async function handleUtil(interaction) {
 }
 
 // ==========================================
-// 👋 WELCOME
+// WELCOME
 // ==========================================
 async function handleWelcome(interaction) {
     const db = require('./database');
@@ -464,7 +474,88 @@ async function handleWelcome(interaction) {
 }
 
 // ==========================================
-// ℹ️ INFO
+// AUTOROLE
+// ==========================================
+async function handleAutoRole(interaction) {
+    const db = require('./database');
+    const sub = interaction.options.getSubcommand();
+    const guildId = interaction.guildId;
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+        if (sub === 'set') {
+            const role = interaction.options.getRole('role');
+            if (role.managed) return interaction.editReply({ content: `❌ Role di-manage bot.` });
+            if (role.position >= interaction.guild.members.me.roles.highest.position) {
+                return interaction.editReply({ content: `❌ Role lebih tinggi dari bot!` });
+            }
+            db.setAutoRoleConfig(guildId, role.id, true);
+            console.log(`🎁 Autorole set: ${role.name}`);
+            return interaction.editReply({ 
+                content: `✅ **Autorole aktif!**\n> Role: ${role}\n> Member baru akan otomatis dapat role ini.\n\n💡 \`/autorole apply\` untuk beri ke semua member.` 
+            });
+        }
+        if (sub === 'disable') {
+            const c = db.getAutoRoleConfig(guildId);
+            if (!c || !c.roleId) return interaction.editReply({ content: `❌ Autorole belum diset.` });
+            db.setAutoRoleConfig(guildId, c.roleId, false);
+            return interaction.editReply({ content: `❌ Autorole dinonaktifkan.` });
+        }
+        if (sub === 'remove') {
+            db.removeAutoRoleConfig(guildId);
+            return interaction.editReply({ content: `🗑️ Config autorole dihapus.` });
+        }
+        if (sub === 'status') {
+            const c = db.getAutoRoleConfig(guildId);
+            if (!c || !c.roleId) return interaction.editReply({ content: `❌ Autorole belum diset.` });
+            const role = interaction.guild.roles.cache.get(c.roleId);
+            return interaction.editReply({ embeds: [new EmbedBuilder()
+                .setColor(c.enabled ? '#57F287' : '#ED4245')
+                .setTitle('🎁 Autorole Config')
+                .addFields(
+                    { name: 'Status', value: c.enabled ? '✅ Aktif' : '❌ Nonaktif', inline: true },
+                    { name: 'Role', value: role ? `${role}` : `*Tidak ditemukan*`, inline: true }
+                )] });
+        }
+        if (sub === 'apply') {
+            const c = db.getAutoRoleConfig(guildId);
+            if (!c || !c.roleId) return interaction.editReply({ content: `❌ Set autorole dulu.` });
+            const role = interaction.guild.roles.cache.get(c.roleId);
+            if (!role) return interaction.editReply({ content: `❌ Role tidak ditemukan.` });
+            if (role.position >= interaction.guild.members.me.roles.highest.position) return interaction.editReply({ content: `❌ Role lebih tinggi dari bot!` });
+
+            await interaction.editReply({ content: `⏳ Fetch semua member...` });
+            const members = await interaction.guild.members.fetch().catch(() => null);
+            if (!members) return interaction.editReply({ content: `❌ Gagal fetch member.` });
+
+            const target = members.filter(m => !m.roles.cache.has(role.id) && !m.user.bot);
+            const total = target.size;
+            if (total === 0) return interaction.editReply({ content: `✅ Semua member sudah punya ${role}.` });
+
+            let success = 0, failed = 0, processed = 0;
+            const start = Date.now();
+
+            for (const [, member] of target) {
+                try { await member.roles.add(role, 'Autorole apply'); success++; }
+                catch { failed++; }
+                processed++;
+                if (processed % 50 === 0) {
+                    try { await interaction.editReply({ content: `⏳ ${processed}/${total}... ✅ ${success} | ❌ ${failed}` }); } catch {}
+                }
+                if (processed % 10 === 0) await new Promise(r => setTimeout(r, 1000));
+            }
+            const dur = ((Date.now() - start) / 1000).toFixed(1);
+            return interaction.editReply({ 
+                content: `✅ **Autorole apply selesai!**\n\n> Role: ${role}\n> ✅ Berhasil: **${success}**\n> ❌ Gagal: **${failed}**\n> ⏱️ ${dur}s` 
+            });
+        }
+    } catch (err) {
+        return interaction.editReply({ content: `❌ Error: \`${err.message}\`` }).catch(() => {});
+    }
+}
+
+// ==========================================
+// INFO
 // ==========================================
 async function handleInfo(interaction) {
     await interaction.deferReply();
@@ -510,7 +601,7 @@ async function handleInfo(interaction) {
 }
 
 // ==========================================
-// 🎯 MAIN HANDLER
+// MAIN HANDLER
 // ==========================================
 async function handleAdminInteraction(interaction) {
     if (!interaction.isChatInputCommand()) return false;
@@ -521,9 +612,9 @@ async function handleAdminInteraction(interaction) {
         'role',
         'kick', 'ban', 'unban', 'timeout', 'untimeout',
         'welcome',
+        'autorole',
         'serverinfo', 'userinfo'
     ];
-
     if (!allCmds.includes(cmd)) return false;
 
     try {
@@ -532,6 +623,7 @@ async function handleAdminInteraction(interaction) {
         else if (['kick', 'ban', 'unban', 'timeout', 'untimeout'].includes(cmd)) await handleMod(interaction);
         else if (['slowmode', 'clear'].includes(cmd)) await handleUtil(interaction);
         else if (cmd === 'welcome') await handleWelcome(interaction);
+        else if (cmd === 'autorole') await handleAutoRole(interaction);
         else if (['serverinfo', 'userinfo'].includes(cmd)) await handleInfo(interaction);
     } catch (err) {
         console.error(`❌ [admin ${cmd}] Error:`, err);
@@ -545,11 +637,28 @@ async function handleAdminInteraction(interaction) {
 }
 
 // ==========================================
-// 👋 MEMBER JOIN
+// MEMBER JOIN
 // ==========================================
 async function handleMemberJoin(member) {
+    const db = require('./database');
+
+    // Autorole
     try {
-        const db = require('./database');
+        const autoConfig = db.getAutoRoleConfig(member.guild.id);
+        if (autoConfig && autoConfig.enabled && autoConfig.roleId) {
+            const role = member.guild.roles.cache.get(autoConfig.roleId);
+            if (role) {
+                const botMember = member.guild.members.me;
+                if (role.position < botMember.roles.highest.position) {
+                    await member.roles.add(role, 'Autorole — member baru join');
+                    console.log(`🎁 Autorole: ${role.name} → ${member.user.username}`);
+                }
+            }
+        }
+    } catch (err) { console.error('❌ Autorole error:', err.message); }
+
+    // Welcome
+    try {
         const config = db.getWelcomeConfig(member.guild.id);
         if (!config || !config.enabled || !config.channelId) return;
         const ch = await member.guild.channels.fetch(config.channelId).catch(() => null);
