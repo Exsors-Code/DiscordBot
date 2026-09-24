@@ -1021,6 +1021,7 @@ client.on('interactionCreate', async interaction => {
 
         // Utility handler
         if (await utility.handleUtilityInteraction(interaction)) return;
+        if (await voiceMod.handleVoiceInteraction(interaction)) return;
 
         const _userId = interaction.user.id;
         if (_userId) userLastInteraction.set(_userId, Date.now());
