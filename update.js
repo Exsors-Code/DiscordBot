@@ -28,6 +28,28 @@ const UPDATE_COMMANDS = [
                 { name: 'Tidak', value: 'none' }
             ))
         )
+        // ===== BARU =====
+        .addSubcommand(s => s
+            .setName('sendmulti')
+            .setDescription('📦 Kirim update yang otomatis dipisah jadi beberapa embed')
+            .addStringOption(o => o.setName('version').setDescription('Versi (contoh: v1.0)').setRequired(true).setMaxLength(20))
+            .addStringOption(o => o.setName('title').setDescription('Judul utama (fallback)').setRequired(true).setMaxLength(200))
+            .addStringOption(o => o.setName('content').setDescription('Isi update — pisahkan pakai "### Judul Section"').setRequired(true).setMaxLength(4000))
+            .addStringOption(o => o.setName('type').setDescription('Tipe update').setRequired(false).addChoices(
+                { name: '🆕 Fitur Baru', value: 'feature' },
+                { name: '🐛 Bug Fix', value: 'bugfix' },
+                { name: '🔧 Perbaikan', value: 'improvement' },
+                { name: '⚡ Performance', value: 'perf' },
+                { name: '🔥 Hotfix', value: 'hotfix' },
+                { name: '🔒 Security', value: 'security' }
+            ))
+            .addStringOption(o => o.setName('mention').setDescription('Mention user? (cuma di embed pertama)').setRequired(false).addChoices(
+                { name: 'Ya, @everyone', value: 'everyone' },
+                { name: 'Ya, @here', value: 'here' },
+                { name: 'Tidak', value: 'none' }
+            ))
+        )
+        // ===== END BARU =====
         .addSubcommand(s => s
             .setName('setchannel')
             .setDescription('Set channel untuk changelog')
@@ -54,7 +76,7 @@ const UPDATE_COMMANDS = [
 const UPDATE_TYPES = {
     feature:     { emoji: '🆕', label: 'Fitur Baru',  color: '#57F287' },
     bugfix:      { emoji: '🐛', label: 'Bug Fix',     color: '#ED4245' },
-    improvement: { emoji: '🔧', label: 'Perbaikan',   color: '#5865F2' },
+    improvement: { emoji: '🔧', label: 'Perbaikan',   color: '#5867F2' },
     perf:        { emoji: '⚡', label: 'Performance', color: '#F1C40F' },
     hotfix:      { emoji: '🔥', label: 'Hotfix',      color: '#E67E22' },
     security:    { emoji: '🔒', label: 'Security',    color: '#9B59B6' }
@@ -72,6 +94,50 @@ function buildUpdateEmbed({ version, title, content, type, author, timestamp }) 
         .setFooter({ text: `Update by ${author} • GrowExs Bot` })
         .setTimestamp(timestamp || Date.now());
 }
+
+// ==========================================
+// BARU — SPLIT CONTENT JADI SECTIONS
+// ==========================================
+// Marker yang didukung di content:
+//   "### Judul Section"
+//   "== Judul Section =="
+//   "--- Judul Section ---"
+// Kalau tidak ada marker, seluruh content jadi 1 section.
+function splitContent(raw) {
+    const lines = raw.split('\n');
+    const sections = [];
+    let currentTitle = null;
+    let currentLines = [];
+
+    const isHeader = (line) => {
+        const t = line.trim();
+        if (/^###\s+/.test(t)) return t.replace(/^###\s+/, '').trim();
+        if (/^==\s+.+\s+==$/.test(t)) return t.replace(/^==\s+/, '').replace(/\s+==$/, '').trim();
+        if (/^---\s+.+\s+---$/.test(t)) return t.replace(/^---\s+/, '').replace(/\s+---$/, '').trim();
+        return null;
+    };
+
+    for (const line of lines) {
+        const h = isHeader(line);
+        if (h !== null) {
+            if (currentLines.length > 0 || currentTitle !== null) {
+                sections.push({ title: currentTitle, body: currentLines.join('\n').trim() });
+            }
+            currentTitle = h;
+            currentLines = [];
+        } else {
+            currentLines.push(line);
+        }
+    }
+    if (currentLines.length > 0 || currentTitle !== null) {
+        sections.push({ title: currentTitle, body: currentLines.join('\n').trim() });
+    }
+
+    return sections.filter(s => s.body.length > 0 || s.title);
+}
+// ==========================================
+// END BARU
+// ==========================================
 
 // ==========================================
 // HANDLER
@@ -92,11 +158,11 @@ async function handleUpdateInteraction(interaction) {
 
         const config = db.getUpdateConfig(guildId) || {};
         config.channelId = ch.id;
-        config.changelogMessageId = null; // reset, biar buat pesan changelog baru
+        config.changelogMessageId = null;
         db.setUpdateConfig(guildId, config);
 
-        return interaction.editReply({ 
-            content: `✅ **Update channel diset!**\n> Channel: ${ch}\n\n💡 Pakai \`/update send\` untuk menambahkan update ke changelog.`
+        return interaction.editReply({
+            content: `✅ **Update channel diset!**\n> Channel: ${ch}\n\n💡 Pakai \`/update send\` atau \`/update sendmulti\`.`
         });
     }
 
@@ -153,7 +219,7 @@ async function handleUpdateInteraction(interaction) {
     }
 
     // ==========================================
-    // /update send — TAMBAH (bukan ganti)
+    // /update send — SIMPLE (1 PESAN, 1 EMBED)
     // ==========================================
     if (sub === 'send') {
         await interaction.deferReply({ ephemeral: true });
@@ -171,7 +237,6 @@ async function handleUpdateInteraction(interaction) {
         const type = interaction.options.getString('type') || 'improvement';
         const mention = interaction.options.getString('mention') || 'none';
 
-        // 1. Simpan ke database dulu
         db.addUpdateHistory(guildId, version, title, content, type, interaction.user.id);
 
         const newEmbed = buildUpdateEmbed({
@@ -180,62 +245,103 @@ async function handleUpdateInteraction(interaction) {
             timestamp: Date.now()
         });
 
-        // 2. Coba TAMBAHKAN ke message yang sudah ada
-        let addedToExisting = false;
-        let targetMessageId = config.changelogMessageId;
+        let mentionText = '';
+        if (mention === 'everyone') mentionText = '@everyone';
+        else if (mention === 'here') mentionText = '@here';
 
-        if (targetMessageId) {
-            try {
-                const existingMsg = await channel.messages.fetch(targetMessageId);
-                if (existingMsg) {
-                    // Ambil embed yang sudah ada
-                    const currentEmbeds = Array.from(existingMsg.embeds);
-                    
-                    // Discord max 10 embed per message
-                    if (currentEmbeds.length < 10) {
-                        // TAMBAHKAN embed baru di paling atas (recent first)
-                        const newEmbeds = [newEmbed, ...currentEmbeds];
-                        await existingMsg.edit({ embeds: newEmbeds });
-                        addedToExisting = true;
-                        console.log(`📢 Update ditambahkan ke changelog (${newEmbeds.length}/10 embeds)`);
-                    } else {
-                        // Sudah 10 embed, buat message baru
-                        console.log(`📢 Changelog penuh (10 embeds), buat message baru`);
-                        addedToExisting = false;
-                    }
-                }
-            } catch (e) {
-                // Message lama sudah dihapus, buat baru
-                console.log(`⚠️ Changelog message tidak ditemukan: ${e.message}`);
-                addedToExisting = false;
-            }
+        try {
+            const sentMsg = await channel.send({
+                content: mentionText || null,
+                embeds: [newEmbed],
+                allowedMentions: mentionText ? { parse: ['everyone'] } : { parse: [] }
+            });
+            db.setChangelogMessageId(guildId, sentMsg.id);
+            console.log(`📢 Update terkirim: ${version} - ${title} oleh ${interaction.user.username}`);
+        } catch (e) {
+            return interaction.editReply({ content: `❌ Gagal kirim: ${e.message}` });
         }
 
-        // 3. Kalau belum bisa tambah ke yang lama, buat pesan baru
-        if (!addedToExisting) {
-            let mentionText = '';
-            if (mention === 'everyone') mentionText = '@everyone';
-            else if (mention === 'here') mentionText = '@here';
-
-            try {
-                const sentMsg = await channel.send({ 
-                    content: mentionText || null,
-                    embeds: [newEmbed],
-                    allowedMentions: mentionText ? { parse: ['everyone'] } : { parse: [] }
-                });
-                db.setChangelogMessageId(guildId, sentMsg.id);
-                console.log(`📢 Changelog message baru dibuat: ${sentMsg.id}`);
-            } catch (e) {
-                return interaction.editReply({ content: `❌ Gagal kirim: ${e.message}` });
-            }
-        }
-
-        console.log(`📢 Update terkirim: ${version} - ${title} oleh ${interaction.user.username}`);
-
-        return interaction.editReply({ 
-            content: `✅ Update berhasil ditambahkan ke changelog!\n> **${version}** — ${title}\n> ${addedToExisting ? '*Ditambahkan ke pesan yang sudah ada*' : '*Pesan changelog baru dibuat*'}`
+        return interaction.editReply({
+            content: `✅ Update terkirim!\n> **${version}** — ${title}\n> 📦 1 embed dikirim.`
         });
     }
+
+    // ==========================================
+    // BARU — /update sendmulti
+    // ==========================================
+    if (sub === 'sendmulti') {
+        await interaction.deferReply({ ephemeral: true });
+        const config = db.getUpdateConfig(guildId);
+        if (!config || !config.channelId) {
+            return interaction.editReply({ content: `❌ Set channel dulu dengan \`/update setchannel #channel\`.` });
+        }
+
+        const channel = await interaction.guild.channels.fetch(config.channelId).catch(() => null);
+        if (!channel) return interaction.editReply({ content: `❌ Channel tidak ditemukan.` });
+
+        const version = interaction.options.getString('version');
+        const title = interaction.options.getString('title');
+        const content = interaction.options.getString('content');
+        const type = interaction.options.getString('type') || 'improvement';
+        const mention = interaction.options.getString('mention') || 'none';
+
+        const sections = splitContent(content);
+
+        if (sections.length === 0) {
+            return interaction.editReply({ content: `❌ Content kosong.` });
+        }
+
+        // Kalau cuma 1 section, anggap sama seperti /update send
+        if (sections.length === 1 && sections[0].title === null) {
+            return interaction.editReply({
+                content: `⚠️ Tidak ada marker \`###\` yang ditemukan.\n> Pakai \`/update send\` untuk update biasa, atau tambahkan marker \`### Judul\` untuk pisah embed.`
+            });
+        }
+
+        let mentionText = '';
+        if (mention === 'everyone') mentionText = '@everyone';
+        else if (mention === 'here') mentionText = '@here';
+
+        const cfg = UPDATE_TYPES[type] || UPDATE_TYPES.improvement;
+        let sentCount = 0;
+
+        try {
+            for (let i = 0; i < sections.length; i++) {
+                const sec = sections[i];
+                const secTitle = sec.title || title;
+
+                const embed = new EmbedBuilder()
+                    .setColor(cfg.color)
+                    .setTitle(`${cfg.emoji} ${cfg.label} — ${version}`)
+                    .setDescription(`### ${secTitle}\n\n${sec.body}`)
+                    .setFooter({ text: `Update by ${interaction.user.username} • GrowExs Bot` })
+                    .setTimestamp();
+
+                // ===== Auto-mention cuma di embed pertama =====
+                const isFirst = i === 0;
+                await channel.send({
+                    content: isFirst ? (mentionText || null) : null,
+                    embeds: [embed],
+                    allowedMentions: isFirst && mentionText ? { parse: ['everyone'] } : { parse: [] }
+                });
+
+                sentCount++;
+                await new Promise(r => setTimeout(r, 1200));
+            }
+
+            db.addUpdateHistory(guildId, version, title, content, type, interaction.user.id);
+            console.log(`📢 sendmulti: ${version} — ${sentCount} embed oleh ${interaction.user.username}`);
+
+            return interaction.editReply({
+                content: `✅ **Update multi-embed terkirim!**\n> **${version}** — ${title}\n> 📦 **${sentCount}** embed terpisah dikirim.\n> 🔔 Mention cuma di embed pertama.`
+            });
+        } catch (e) {
+            return interaction.editReply({ content: `❌ Gagal kirim: ${e.message}` });
+        }
+    }
+    // ==========================================
+    // END BARU
+    // ==========================================
 
     return true;
 }
@@ -244,5 +350,6 @@ module.exports = {
     UPDATE_COMMANDS,
     handleUpdateInteraction,
     buildUpdateEmbed,
-    UPDATE_TYPES
+    UPDATE_TYPES,
+    splitContent // BARU — biar bisa dipakai file lain kalau perlu
 };
