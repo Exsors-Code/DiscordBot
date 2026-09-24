@@ -172,13 +172,10 @@ db.exec(`
     )
 `);
 
-// Migration: tambah kolom changelogMessageId kalau belum ada
 try {
     db.exec(`ALTER TABLE update_config ADD COLUMN changelogMessageId TEXT`);
     console.log('✅ Migration: kolom changelogMessageId ditambahkan');
-} catch (e) {
-    // Kolom sudah ada, skip
-}
+} catch (e) {}
 
 db.exec(`
     CREATE TABLE IF NOT EXISTS update_history (
@@ -192,6 +189,22 @@ db.exec(`
         timestamp INTEGER
     )
 `);
+
+// ==========================================
+// BARU — AFK CHECK CONFIG (tambahan kolom di guild_config)
+// ==========================================
+try {
+    db.exec(`ALTER TABLE guild_config ADD COLUMN afkCheckEnabled INTEGER DEFAULT 0`);
+    console.log('✅ Migration: kolom afkCheckEnabled ditambahkan');
+} catch (e) {}
+try {
+    db.exec(`ALTER TABLE guild_config ADD COLUMN afkCheckInterval INTEGER DEFAULT 20`);
+    console.log('✅ Migration: kolom afkCheckInterval ditambahkan');
+} catch (e) {}
+try {
+    db.exec(`ALTER TABLE guild_config ADD COLUMN afkCheckTimeout INTEGER DEFAULT 120`);
+    console.log('✅ Migration: kolom afkCheckTimeout ditambahkan');
+} catch (e) {}
 
 console.log('✅ Database SQLite siap!');
 
@@ -283,6 +296,38 @@ function setGuildConfig(g, p, l) {
 function updateLeaderboardMessage(g, m) { db.prepare('UPDATE guild_config SET leaderboardMessageId = ? WHERE guildId = ?').run(m, g); }
 function getAllGuildConfigs() { return db.prepare('SELECT * FROM guild_config').all(); }
 function removeGuildConfig(g) { db.prepare('DELETE FROM guild_config WHERE guildId = ?').run(g); }
+
+// ==========================================
+// BARU — AFK CHECK CONFIG
+// ==========================================
+function getAfkCheckConfig(guildId) {
+    const row = db.prepare('SELECT afkCheckEnabled, afkCheckInterval, afkCheckTimeout FROM guild_config WHERE guildId = ?').get(guildId);
+    if (!row) {
+        return { enabled: false, intervalMinutes: 20, timeoutSeconds: 120 };
+    }
+    return {
+        enabled: row.afkCheckEnabled === 1,
+        intervalMinutes: row.afkCheckInterval || 20,
+        timeoutSeconds: row.afkCheckTimeout || 120
+    };
+}
+
+function setAfkCheckConfig(guildId, data) {
+    const existing = db.prepare('SELECT guildId FROM guild_config WHERE guildId = ?').get(guildId);
+    if (!existing) {
+        db.prepare('INSERT INTO guild_config (guildId) VALUES (?)').run(guildId);
+    }
+    db.prepare(`
+        UPDATE guild_config 
+        SET afkCheckEnabled = ?, afkCheckInterval = ?, afkCheckTimeout = ?
+        WHERE guildId = ?
+    `).run(
+        data.enabled ? 1 : 0,
+        data.intervalMinutes || 20,
+        data.timeoutSeconds || 120,
+        guildId
+    );
+}
 
 function getWelcomeConfig(g) { return db.prepare('SELECT * FROM welcome_config WHERE guildId = ?').get(g) || null; }
 function setWelcomeConfig(g, d) {
@@ -421,30 +466,19 @@ function getUpdateHistory(guildId, limit = 10) {
     return db.prepare('SELECT * FROM update_history WHERE guildId = ? ORDER BY timestamp DESC LIMIT ?').all(guildId, limit);
 }
 
-// ==========================================
-// BARU — EDIT & DELETE UPDATE HISTORY
-// ==========================================
 function getUpdateHistoryById(id) {
     return db.prepare('SELECT * FROM update_history WHERE id = ?').get(id) || null;
 }
-
 function updateHistoryEntry(id, data) {
-    db.prepare(`
-        UPDATE update_history
-        SET version = ?, title = ?, content = ?, type = ?
-        WHERE id = ?
-    `).run(data.version, data.title, data.content, data.type, id);
+    db.prepare(`UPDATE update_history SET version = ?, title = ?, content = ?, type = ? WHERE id = ?`)
+        .run(data.version, data.title, data.content, data.type, id);
 }
-
 function deleteHistoryEntry(id) {
     db.prepare('DELETE FROM update_history WHERE id = ?').run(id);
 }
-
 function deleteUpdateHistoryByVersion(guildId, version, title) {
-    db.prepare('DELETE FROM update_history WHERE guildId = ? AND version = ? AND title = ?')
-        .run(guildId, version, title);
+    db.prepare('DELETE FROM update_history WHERE guildId = ? AND version = ? AND title = ?').run(guildId, version, title);
 }
-
 function clearUpdateHistory(guildId) {
     db.prepare('DELETE FROM update_history WHERE guildId = ?').run(guildId);
 }
@@ -452,6 +486,7 @@ function clearUpdateHistory(guildId) {
 module.exports = {
     connectDB, getUser, saveUser, getAllUsers, resetUser,
     getGuildConfig, setGuildConfig, updateLeaderboardMessage, getAllGuildConfigs, removeGuildConfig,
+    getAfkCheckConfig, setAfkCheckConfig,
     getWelcomeConfig, setWelcomeConfig,
     getAutoRoleConfig, setAutoRoleConfig, removeAutoRoleConfig,
     addWarn, getWarns, getAllWarns, removeWarn, clearWarns,
@@ -463,8 +498,6 @@ module.exports = {
     getUserThread, setUserThread, removeUserThread,
     getUpdateConfig, setUpdateConfig, setChangelogMessageId,
     addUpdateHistory, getUpdateHistory,
-
-    // ===== BARU =====
     getUpdateHistoryById, updateHistoryEntry,
     deleteHistoryEntry, deleteUpdateHistoryByVersion,
     clearUpdateHistory
