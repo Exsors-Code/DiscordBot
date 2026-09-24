@@ -10,6 +10,7 @@ const db = require('./database');
 const { handleAdminInteraction, handleMemberJoin } = require('./admin');
 const utility = require('./utility');
 const { checkOwnerOnly, blockNonOwner } = require('./owner');
+const updateMod = require('./update');
 const fs = require('fs');
 const path = require('path');
 
@@ -933,15 +934,12 @@ client.on('messageReactionRemove', async (reaction, user) => {
     } catch (e) { console.error('reactionRemove err:', e.message); }
 });
 
-// ==========================================
-// INTERACTION HANDLER
-// ==========================================
 client.on('interactionCreate', async interaction => {
     try {
-        // 🔒 CEK OWNER — kalau bukan owner & command bukan public, blok
-        if (!checkOwnerOnly(interaction)) {
-            return blockNonOwner(interaction);
-        }
+        if (!checkOwnerOnly(interaction)) return blockNonOwner(interaction);
+
+        // Update command
+        if (await updateMod.handleUpdateInteraction(interaction)) return;
 
         // Admin handler
         if (await handleAdminInteraction(interaction)) return;
@@ -1165,9 +1163,6 @@ client.on('interactionCreate', async interaction => {
         let ephemeralMsg = null;
         let ephemeralError = false;
 
-        // ==========================================
-        // START FARMING — ANTI EKSPLOITASI
-        // ==========================================
         if (id === 'start_farming') {
             if (!interaction.guild) return interaction.reply({ content: '❌ Hanya di server.', ephemeral: true });
             await interaction.deferReply({ ephemeral: true });
