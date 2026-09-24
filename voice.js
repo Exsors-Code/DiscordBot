@@ -50,6 +50,7 @@ function getVoiceByPanelMessage(messageId) {
 // HELPER — CARI / BIKIN CATEGORY
 // ==========================================
 async function resolveCategory(guild, selectedCategory, botMember) {
+    // 1. Kalau user pilih category, pakai itu
     if (selectedCategory) {
         const perms = selectedCategory.permissionsFor(botMember);
         if (!perms || !perms.has(PermissionFlagsBits.ManageChannels)) {
@@ -58,10 +59,12 @@ async function resolveCategory(guild, selectedCategory, botMember) {
         return { category: selectedCategory };
     }
 
+    // 2. Cari category bernama DEFAULT_CATEGORY_NAME
     let category = guild.channels.cache.find(
         c => c.type === ChannelType.GuildCategory && c.name === DEFAULT_CATEGORY_NAME
     );
 
+    // 3. Kalau tidak ada, bikin baru
     if (!category) {
         try {
             category = await guild.channels.create({
@@ -288,6 +291,7 @@ async function handleVoiceButton(interaction) {
 
     const id = interaction.customId;
 
+    // LOCK / UNLOCK
     if (id === 'vc_lock') {
         const newLocked = !data.locked;
         try {
@@ -303,6 +307,7 @@ async function handleVoiceButton(interaction) {
         return;
     }
 
+    // DELETE (konfirmasi dulu)
     if (id === 'vc_delete') {
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('vc_confirm_delete').setLabel('✅ Ya, Hapus').setStyle(ButtonStyle.Danger),
@@ -315,6 +320,7 @@ async function handleVoiceButton(interaction) {
         });
     }
 
+    // RENAME → Modal
     if (id === 'vc_rename') {
         const modal = new ModalBuilder().setCustomId('vc_modal_rename').setTitle('Rename Voice');
         const input = new TextInputBuilder()
@@ -327,6 +333,7 @@ async function handleVoiceButton(interaction) {
         return interaction.showModal(modal);
     }
 
+    // SET LIMIT → Modal
     if (id === 'vc_limit') {
         const modal = new ModalBuilder().setCustomId('vc_modal_limit').setTitle('Set User Limit');
         const input = new TextInputBuilder()
@@ -339,6 +346,7 @@ async function handleVoiceButton(interaction) {
         return interaction.showModal(modal);
     }
 
+    // INVITE → UserSelect
     if (id === 'vc_invite') {
         const select = new UserSelectMenuBuilder()
             .setCustomId('vc_select_invite')
@@ -352,6 +360,7 @@ async function handleVoiceButton(interaction) {
         });
     }
 
+    // KICK → UserSelect
     if (id === 'vc_kick') {
         const members = vc.members.filter(m => m.id !== data.ownerId);
         if (members.size === 0) {
@@ -369,6 +378,7 @@ async function handleVoiceButton(interaction) {
         });
     }
 
+    // CLAIM
     if (id === 'vc_claim') {
         if (interaction.user.id === data.ownerId) {
             return interaction.reply({ content: '❌ Kamu sudah owner.', ephemeral: true });
@@ -386,8 +396,8 @@ async function handleVoiceButton(interaction) {
         return;
     }
 
+    // CONFIRM DELETE
     if (id === 'vc_confirm_delete') {
-        // Batalkan empty timer kalau ada
         if (data.emptyTimer) { clearTimeout(data.emptyTimer); data.emptyTimer = null; }
         activeVoices.delete(data.channelId);
         try { await vc.delete('Owner delete private voice'); } catch {}
@@ -488,7 +498,7 @@ async function handleVoiceSelect(interaction) {
 }
 
 // ==========================================
-// VOICE STATE UPDATE (auto-delete)
+// VOICE STATE UPDATE (auto-delete kalau kosong)
 // ==========================================
 async function handleVoiceStateUpdate(client, oldState, newState) {
     const channelId = oldState.channelId;
@@ -529,23 +539,19 @@ async function handleVoiceStateUpdate(client, oldState, newState) {
 }
 
 // ==========================================
-// BARU — CHANNEL DELETE HANDLER
+// CHANNEL DELETE HANDLER (kalau voice dihapus manual)
 // ==========================================
 async function handleChannelDelete(client, channel) {
-    // Cek apakah channel yang dihapus adalah voice yang kita track
     const data = activeVoices.get(channel.id);
     if (!data) return;
 
-    // Batalkan timer kalau ada
     if (data.emptyTimer) {
         clearTimeout(data.emptyTimer);
         data.emptyTimer = null;
     }
 
-    // Hapus dari state
     activeVoices.delete(channel.id);
 
-    // Update panel jadi "dihapus"
     await markPanelDeleted(
         client,
         data,
