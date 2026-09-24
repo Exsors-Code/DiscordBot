@@ -421,6 +421,34 @@ function getUpdateHistory(guildId, limit = 10) {
     return db.prepare('SELECT * FROM update_history WHERE guildId = ? ORDER BY timestamp DESC LIMIT ?').all(guildId, limit);
 }
 
+// ==========================================
+// BARU — EDIT & DELETE UPDATE HISTORY
+// ==========================================
+function getUpdateHistoryById(id) {
+    return db.prepare('SELECT * FROM update_history WHERE id = ?').get(id) || null;
+}
+
+function updateHistoryEntry(id, data) {
+    db.prepare(`
+        UPDATE update_history
+        SET version = ?, title = ?, content = ?, type = ?
+        WHERE id = ?
+    `).run(data.version, data.title, data.content, data.type, id);
+}
+
+function deleteHistoryEntry(id) {
+    db.prepare('DELETE FROM update_history WHERE id = ?').run(id);
+}
+
+function deleteUpdateHistoryByVersion(guildId, version, title) {
+    db.prepare('DELETE FROM update_history WHERE guildId = ? AND version = ? AND title = ?')
+        .run(guildId, version, title);
+}
+
+function clearUpdateHistory(guildId) {
+    db.prepare('DELETE FROM update_history WHERE guildId = ?').run(guildId);
+}
+
 module.exports = {
     connectDB, getUser, saveUser, getAllUsers, resetUser,
     getGuildConfig, setGuildConfig, updateLeaderboardMessage, getAllGuildConfigs, removeGuildConfig,
@@ -434,5 +462,10 @@ module.exports = {
     getAutomodConfig, setAutomodConfig,
     getUserThread, setUserThread, removeUserThread,
     getUpdateConfig, setUpdateConfig, setChangelogMessageId,
-    addUpdateHistory, getUpdateHistory
+    addUpdateHistory, getUpdateHistory,
+
+    // ===== BARU =====
+    getUpdateHistoryById, updateHistoryEntry,
+    deleteHistoryEntry, deleteUpdateHistoryByVersion,
+    clearUpdateHistory
 };
