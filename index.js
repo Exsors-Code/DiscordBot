@@ -10,6 +10,7 @@ const db = require('./database');
 const { handleAdminInteraction, handleMemberJoin } = require('./admin');
 const utility = require('./utility');
 const { checkOwnerOnly, blockNonOwner } = require('./owner');
+const updateMod = require('./update');
 const fs = require('fs');
 const path = require('path');
 
@@ -23,18 +24,28 @@ const client = new Client({
     ] 
 });
 
+// ==========================================
+// 🛡️ GLOBAL ERROR HANDLER
+// ==========================================
 process.on('unhandledRejection', (error) => {
     if (error?.code === 10062) console.log('⚠️ [10062] Interaction expired');
+    else if (error?.code === 40060) console.log('⚠️ [40060] Interaction already acknowledged');
     else console.error('❌ Unhandled Rejection:', error);
 });
 process.on('uncaughtException', (error) => {
     if (error?.code === 10062) console.log('⚠️ [10062] Interaction expired');
+    else if (error?.code === 40060) console.log('⚠️ [40060] Interaction already acknowledged');
     else console.error('❌ Uncaught Exception:', error);
 });
 
+// ==========================================
+// ⚙️ KONFIGURASI
+// ==========================================
 const LEADERBOARD_UPDATE_INTERVAL = 10000;
 const EVENT_ROLE_IDS = ['1408101505008926840'];
 const EDIT_THROTTLE_MS = 3000;
+const INTERACTION_LOCK_MS = 1500;
+const MEMBER_CACHE_TTL = 5 * 60 * 1000;
 
 const UNLIMITED_BLOCKS = ['dirt'];
 function isUnlimited(blockKey) { return UNLIMITED_BLOCKS.includes(blockKey); }
@@ -58,6 +69,9 @@ function getSkillUpgradeCost(currentLevel) {
     return Math.min(5, 1 + Math.floor(currentLevel / 2));
 }
 
+// ==========================================
+// SHOP CONFIG
+// ==========================================
 const SHOP_TOOLS = {
     lss:  { name: 'LSS',  price: 10000,    multiplier: 30,  invBonus: 5000,  blocksPerBreak: 3,  emoji: '🗡️' },
     lray: { name: 'LRAY', price: 100000,   multiplier: 50,  invBonus: 10000, blocksPerBreak: 7,  emoji: '🔫' },
@@ -88,6 +102,9 @@ const SKILLS = {
 const BASE_RETURN_CHANCE = 0.10;
 const MAX_CUSTOM_QTY = 1000000;
 
+// ==========================================
+// CACHE
+// ==========================================
 const autoFarmIntervals = new Map();
 const autoFarmTokens = new Map();
 const activeMessages = new Map();
@@ -96,24 +113,28 @@ const userCache = new Map();
 const guildLeaderboards = new Map();
 const guildMemberCache = new Map();
 const guildMemberCacheTime = new Map();
-const MEMBER_CACHE_TTL = 5 * 60 * 1000;
 const userLastInteraction = new Map();
-const INTERACTION_LOCK_MS = 1500;
 const userLastEdit = new Map();
 
+// ==========================================
+// HELPER FUNCTIONS
+// ==========================================
 function getTotalBlocks(ud) { return ud.blocks.dirt + ud.blocks.pog; }
 
 function getTotalLockValue(ud) {
     const { wl, dl, bgl, bglb } = ud.locks;
     return (wl * 1) + (dl * 100) + (bgl * 10000) + (bglb * 1000000);
 }
+
 function isBuffActive(ud, key) { return Date.now() < ud.activeBuffs[key]; }
+
 function getActiveBuffText(ud) {
     const active = [];
     if (isBuffActive(ud, 'arroz')) active.push(`🍗 Arroz • ${Math.ceil((ud.activeBuffs.arroz - Date.now())/1000)}s`);
     if (isBuffActive(ud, 'clover')) active.push(`🍀 Clover • ${Math.ceil((ud.activeBuffs.clover - Date.now())/1000)}s`);
     return active.length > 0 ? active.join(' | ') : '*(Tidak ada)*';
 }
+
 function checkLevelUp(ud) {
     let leveledUp = 0;
     ud.maxXp = getMaxXpForLevel(ud.level);
@@ -126,11 +147,13 @@ function checkLevelUp(ud) {
     }
     return leveledUp;
 }
+
 function isEventManager(member) {
     if (!member) return false;
     if (member.permissions?.has(PermissionFlagsBits.Administrator)) return true;
     return EVENT_ROLE_IDS.some(roleId => member.roles.cache.has(roleId));
 }
+
 async function getGuildMemberIds(guildId) {
     const now = Date.now();
     const lastUpdate = guildMemberCacheTime.get(guildId) || 0;
@@ -187,6 +210,7 @@ function mainEmbed(ud) {
             { name: 'Last Break:', value: ud.lastBreak, inline: false }
         );
 }
+
 function mainButtons(ud) {
     const row1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('btn_farm').setLabel('🌾 Farm').setStyle(ButtonStyle.Success).setDisabled(ud.autoFarm),
@@ -219,6 +243,7 @@ function eventEmbed(ud) {
             `*Gunakan \`/customevent\` untuk mengubah (khusus Event Manager).*`
         );
 }
+
 function eventButtons() {
     return [new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary)
@@ -236,6 +261,7 @@ function shopMainEmbed(ud) {
         )
         .setFooter({ text: `Gems kamu: ${Math.floor(ud.gems).toLocaleString()}` });
 }
+
 function shopMainButtons() {
     return [
         new ActionRowBuilder().addComponents(
@@ -261,6 +287,7 @@ function shopToolsEmbed(ud) {
         .setDescription(lines.join('\n\n'))
         .setFooter({ text: `Gems kamu: ${Math.floor(ud.gems).toLocaleString()}` });
 }
+
 function shopToolsButtons() {
     return [
         new ActionRowBuilder().addComponents(
@@ -291,6 +318,7 @@ function shopBlocksEmbed(ud) {
         .setDescription(lines.join('\n\n'))
         .setFooter({ text: `Gems kamu: ${Math.floor(ud.gems).toLocaleString()}` });
 }
+
 function shopBlocksButtons() {
     return [
         new ActionRowBuilder().addComponents(
@@ -318,6 +346,7 @@ function changeBlockEmbed(ud) {
     return new EmbedBuilder().setColor('#8B4513').setTitle('⛏️ Change Block')
         .setDescription(lines.join('\n\n'));
 }
+
 function changeBlockButtons(ud) {
     const dirtStock = isUnlimited('dirt') ? '∞' : ud.blocks.dirt.toLocaleString();
     return [
@@ -345,6 +374,7 @@ function shopItemsEmbed(ud) {
         .setDescription(lines.join('\n\n'))
         .setFooter({ text: `Gems kamu: ${Math.floor(ud.gems).toLocaleString()}` });
 }
+
 function shopItemsButtons() {
     return [
         new ActionRowBuilder().addComponents(
@@ -369,6 +399,7 @@ function shopLocksEmbed(ud) {
         .setDescription(lines.join('\n\n'))
         .setFooter({ text: `Gems kamu: ${Math.floor(ud.gems).toLocaleString()}` });
 }
+
 function shopLocksButtons() {
     return [
         new ActionRowBuilder().addComponents(
@@ -406,6 +437,7 @@ function skillsEmbed(ud) {
         )
         .setFooter({ text: `Level kamu: ${ud.level} • SP: ${ud.skillPoints}` });
 }
+
 function skillsButtons(ud) {
     const sp = ud.skillPoints;
     const dis = (key) => {
@@ -434,6 +466,7 @@ function itemsEmbed(ud) {
             `🍀 **Lucky Clover** x${ud.items.clover}\n> x2 XP selama 5 menit`
         );
 }
+
 function itemsButtons(ud) {
     return [new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('use_arroz').setLabel('🍗 Pakai Arroz').setStyle(ButtonStyle.Primary).setDisabled(ud.items.arroz <= 0),
@@ -450,6 +483,7 @@ function toolsEmbed(ud) {
             `\n\n*Tools permanently multiply both Gems and XP.*`
         );
 }
+
 function toolsButtons(ud) {
     const rows = [];
     if (ud.ownedTools.length > 0) {
@@ -489,12 +523,16 @@ function profileEmbed(ud) {
                 `**Total: ${totalValue.toLocaleString()} WL**`, inline: false }
         );
 }
+
 function profileButtons() {
     return [new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary)
     )];
 }
 
+// ==========================================
+// LEADERBOARD
+// ==========================================
 async function generateLeaderboardEmbed(guildId) {
     const allUsers = db.getAllUsers();
     const memberIds = await getGuildMemberIds(guildId);
@@ -527,6 +565,7 @@ async function generateLeaderboardEmbed(guildId) {
         .setFooter({ text: `Total ${entries.length} pemain • Update tiap ${LEADERBOARD_UPDATE_INTERVAL / 1000} detik` })
         .setTimestamp();
 }
+
 async function refreshAllLeaderboards() {
     for (const [guildId, msg] of guildLeaderboards.entries()) {
         try {
@@ -536,6 +575,9 @@ async function refreshAllLeaderboards() {
     }
 }
 
+// ==========================================
+// RENDER ROUTER
+// ==========================================
 function renderEmbed(ud) {
     switch(ud.currentView) {
         case 'shop':         return shopMainEmbed(ud);
@@ -552,6 +594,7 @@ function renderEmbed(ud) {
         default:             return mainEmbed(ud);
     }
 }
+
 function renderButtons(ud) {
     switch(ud.currentView) {
         case 'shop':         return shopMainButtons();
@@ -569,6 +612,9 @@ function renderButtons(ud) {
     }
 }
 
+// ==========================================
+// BREAK LOGIC
+// ==========================================
 function doBreak(ud) {
     const blockType = ud.selectedBlock;
     const bd = SHOP_BLOCKS[blockType];
@@ -629,6 +675,7 @@ function doBreak(ud) {
 
     return { gemsGained: totalGems, xpGained: totalXp, blockType, levelsGained, blocksBroken: blocksToBreak, returned, unlimited };
 }
+
 function formatBreakLog(result, prefix = 'Auto') {
     const bd = SHOP_BLOCKS[result.blockType];
     let msg = `${prefix} [${bd.name}]: -${result.blocksBroken}`;
@@ -638,6 +685,9 @@ function formatBreakLog(result, prefix = 'Auto') {
     return msg;
 }
 
+// ==========================================
+// AUTO FARM
+// ==========================================
 function startAutoFarm(userId) {
     const existingId = autoFarmIntervals.get(userId);
     if (existingId) { clearInterval(existingId); autoFarmIntervals.delete(userId); }
@@ -653,40 +703,67 @@ function startAutoFarm(userId) {
     userLastEdit.set(userId, 0);
 
     const intervalId = setInterval(async () => {
-        if (autoFarmTokens.get(userId) !== myToken) {
-            clearInterval(intervalId);
-            if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
-            return;
-        }
-        if (autoFarmIntervals.get(userId) !== intervalId) { clearInterval(intervalId); return; }
+        try {
+            if (autoFarmTokens.get(userId) !== myToken) {
+                clearInterval(intervalId);
+                if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
+                return;
+            }
+            if (autoFarmIntervals.get(userId) !== intervalId) { clearInterval(intervalId); return; }
 
-        const ud = userCache.get(userId);
-        if (!ud || ud.autoFarm !== true) {
-            clearInterval(intervalId);
-            if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
-            return;
-        }
+            const ud = userCache.get(userId);
+            if (!ud || ud.autoFarm !== true) {
+                clearInterval(intervalId);
+                if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
+                return;
+            }
 
-        const lastInteract = userLastInteraction.get(userId) || 0;
-        const isUserLocked = (Date.now() - lastInteract) < INTERACTION_LOCK_MS;
-        if (isUserLocked) return;
+            const lastInteract = userLastInteraction.get(userId) || 0;
+            const isUserLocked = (Date.now() - lastInteract) < INTERACTION_LOCK_MS;
+            if (isUserLocked) return;
 
-        const result = doBreak(ud);
-        if (result && !result.switched) {
-            if (!ud._acc) ud._acc = { gems: 0, xp: 0, blocks: 0, returned: 0, levels: 0, blockType: null };
-            ud._acc.gems += result.gemsGained;
-            ud._acc.xp += result.xpGained;
-            ud._acc.blocks += result.blocksBroken;
-            ud._acc.returned += result.returned;
-            ud._acc.levels += result.levelsGained;
-            ud._acc.blockType = result.blockType;
-        }
+            const result = doBreak(ud);
+            if (result && !result.switched) {
+                if (!ud._acc) ud._acc = { gems: 0, xp: 0, blocks: 0, returned: 0, levels: 0, blockType: null };
+                ud._acc.gems += result.gemsGained;
+                ud._acc.xp += result.xpGained;
+                ud._acc.blocks += result.blocksBroken;
+                ud._acc.returned += result.returned;
+                ud._acc.levels += result.levelsGained;
+                ud._acc.blockType = result.blockType;
+            }
 
-        if (ud.autoFarm === false) {
-            autoFarmTokens.set(userId, (autoFarmTokens.get(userId) || 0) + 1);
-            clearInterval(intervalId);
-            if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
-            db.saveUser(ud);
+            if (ud.autoFarm === false) {
+                autoFarmTokens.set(userId, (autoFarmTokens.get(userId) || 0) + 1);
+                clearInterval(intervalId);
+                if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
+                db.saveUser(ud);
+                if (ud._acc && ud._acc.blocks > 0) {
+                    const bd = SHOP_BLOCKS[ud._acc.blockType];
+                    let msg = `Auto [${bd.name}]: -${ud._acc.blocks}`;
+                    if (ud._acc.returned > 0) msg += ` (+${ud._acc.returned})`;
+                    msg += ` → +${ud._acc.gems.toLocaleString()} 💰 / +${ud._acc.xp.toLocaleString()} XP`;
+                    if (ud._acc.levels > 0) msg += ` 🎉 **LEVEL UP! +${ud._acc.levels} SP**`;
+                    ud.lastBreak = msg;
+                    ud._acc = null;
+                }
+                const m = activeMessages.get(userId);
+                if (m) { try { await m.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); } catch {} }
+                return;
+            }
+
+            if (!ud._lastSave || Date.now() - ud._lastSave > 3000) {
+                db.saveUser(ud);
+                ud._lastSave = Date.now();
+            }
+
+            const lastEdit = userLastEdit.get(userId) || 0;
+            if (Date.now() - lastEdit < EDIT_THROTTLE_MS) return;
+
+            if (autoFarmTokens.get(userId) !== myToken) return;
+            if (autoFarmIntervals.get(userId) !== intervalId) return;
+            if (ud.autoFarm !== true) return;
+
             if (ud._acc && ud._acc.blocks > 0) {
                 const bd = SHOP_BLOCKS[ud._acc.blockType];
                 let msg = `Auto [${bd.name}]: -${ud._acc.blocks}`;
@@ -694,52 +771,30 @@ function startAutoFarm(userId) {
                 msg += ` → +${ud._acc.gems.toLocaleString()} 💰 / +${ud._acc.xp.toLocaleString()} XP`;
                 if (ud._acc.levels > 0) msg += ` 🎉 **LEVEL UP! +${ud._acc.levels} SP**`;
                 ud.lastBreak = msg;
-                ud._acc = null;
+                ud._acc = { gems: 0, xp: 0, blocks: 0, returned: 0, levels: 0, blockType: null };
             }
-            const m = activeMessages.get(userId);
-            if (m) { try { await m.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); } catch {} }
-            return;
-        }
 
-        if (!ud._lastSave || Date.now() - ud._lastSave > 3000) {
-            db.saveUser(ud);
-            ud._lastSave = Date.now();
-        }
+            userLastEdit.set(userId, Date.now());
 
-        const lastEdit = userLastEdit.get(userId) || 0;
-        if (Date.now() - lastEdit < EDIT_THROTTLE_MS) return;
-
-        if (autoFarmTokens.get(userId) !== myToken) return;
-        if (autoFarmIntervals.get(userId) !== intervalId) return;
-        if (ud.autoFarm !== true) return;
-
-        if (ud._acc && ud._acc.blocks > 0) {
-            const bd = SHOP_BLOCKS[ud._acc.blockType];
-            let msg = `Auto [${bd.name}]: -${ud._acc.blocks}`;
-            if (ud._acc.returned > 0) msg += ` (+${ud._acc.returned})`;
-            msg += ` → +${ud._acc.gems.toLocaleString()} 💰 / +${ud._acc.xp.toLocaleString()} XP`;
-            if (ud._acc.levels > 0) msg += ` 🎉 **LEVEL UP! +${ud._acc.levels} SP**`;
-            ud.lastBreak = msg;
-            ud._acc = { gems: 0, xp: 0, blocks: 0, returned: 0, levels: 0, blockType: null };
-        }
-
-        userLastEdit.set(userId, Date.now());
-
-        const msg = activeMessages.get(userId);
-        if (msg) {
-            try { await msg.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); }
-            catch (e) { 
+            const msg = activeMessages.get(userId);
+            if (msg) {
+                try { await msg.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); }
+                catch (e) { 
+                    clearInterval(intervalId);
+                    if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
+                }
+            } else {
                 clearInterval(intervalId);
                 if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
             }
-        } else {
-            clearInterval(intervalId);
-            if (autoFarmIntervals.get(userId) === intervalId) autoFarmIntervals.delete(userId);
+        } catch (err) {
+            console.error('❌ Auto farm tick error:', err.message);
         }
     }, interval);
 
     autoFarmIntervals.set(userId, intervalId);
 }
+
 function stopAutoFarm(userId) {
     autoFarmTokens.set(userId, (autoFarmTokens.get(userId) || 0) + 1);
     const id = autoFarmIntervals.get(userId);
@@ -749,6 +804,9 @@ function stopAutoFarm(userId) {
     if (ud) ud._acc = null;
 }
 
+// ==========================================
+// MODAL
+// ==========================================
 function buildBuyModal(title, customId, priceInfo) {
     const modal = new ModalBuilder().setCustomId(customId).setTitle(title);
     const input = new TextInputBuilder()
@@ -759,6 +817,9 @@ function buildBuyModal(title, customId, priceInfo) {
     return modal;
 }
 
+// ==========================================
+// REALTIME RESET
+// ==========================================
 async function realtimeResetPlayer(targetUser) {
     const userId = targetUser.id;
     const username = targetUser.username;
@@ -800,7 +861,7 @@ async function realtimeResetPlayer(targetUser) {
     return success;
 }
 
-async function invalidateOldPanel(userId, reason = 'Panel ini sudah tidak aktif. Buka panel baru dengan `/farming`.') {
+async function invalidateOldPanel(userId, reason = 'Panel ini sudah tidak aktif.') {
     const oldMsg = activeMessages.get(userId);
     if (!oldMsg) return;
     try {
@@ -812,6 +873,9 @@ async function invalidateOldPanel(userId, reason = 'Panel ini sudah tidak aktif.
     activeMessages.delete(userId);
 }
 
+// ==========================================
+// SETUP GUILD
+// ==========================================
 async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
     try {
         const panelChannel = await client.channels.fetch(panelChannelId).catch(() => null);
@@ -882,11 +946,15 @@ async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
     } catch (err) { console.error(`❌ Setup guild ${guild.name} gagal:`, err.message); }
 }
 
+// ==========================================
+// BOT READY
+// ==========================================
 client.once('ready', async () => {
     console.log(`✅ Bot ${client.user.tag} siap!`);
     console.log(`🌐 Terhubung ke ${client.guilds.cache.size} server`);
     await db.connectDB();
 
+    // Auto backup
     setInterval(() => {
         try {
             const src = path.join(__dirname, 'growexs.db');
@@ -895,6 +963,7 @@ client.once('ready', async () => {
         } catch (e) { console.error('Backup gagal:', e.message); }
     }, 6 * 60 * 60 * 1000);
 
+    // Setup semua guild
     const configs = db.getAllGuildConfigs();
     for (const cfg of configs) {
         const guild = client.guilds.cache.get(cfg.guildId);
@@ -902,6 +971,8 @@ client.once('ready', async () => {
         console.log(`🔧 Setup guild: ${guild.name}`);
         await setupGuild(guild, cfg.panelChannelId, cfg.leaderboardChannelId);
     }
+    
+    // Leaderboard refresh loop
     setInterval(refreshAllLeaderboards, LEADERBOARD_UPDATE_INTERVAL);
 });
 
@@ -910,7 +981,7 @@ client.on('guildCreate', (guild) => {
 });
 
 client.on('guildMemberAdd', async (member) => {
-    await handleMemberJoin(member);
+    try { await handleMemberJoin(member); } catch (e) { console.error('guildMemberAdd error:', e.message); }
 });
 
 client.on('messageCreate', async (message) => {
@@ -938,20 +1009,24 @@ client.on('messageReactionRemove', async (reaction, user) => {
 // ==========================================
 client.on('interactionCreate', async interaction => {
     try {
-        // 🔒 CEK OWNER — kalau bukan owner & command bukan public, blok
-        if (!checkOwnerOnly(interaction)) {
-            return blockNonOwner(interaction);
-        }
+        // Cek owner
+        if (!checkOwnerOnly(interaction)) return blockNonOwner(interaction);
+
+        // Update command
+        if (await updateMod.handleUpdateInteraction(interaction)) return;
 
         // Admin handler
         if (await handleAdminInteraction(interaction)) return;
-        
+
         // Utility handler
         if (await utility.handleUtilityInteraction(interaction)) return;
 
         const _userId = interaction.user.id;
         if (_userId) userLastInteraction.set(_userId, Date.now());
 
+        // ==========================================
+        // SLASH COMMANDS
+        // ==========================================
         if (interaction.isChatInputCommand()) {
             const userId = interaction.user.id;
 
@@ -1067,6 +1142,9 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
+        // ==========================================
+        // STRING SELECT MENU
+        // ==========================================
         if (interaction.isStringSelectMenu()) {
             const userId = interaction.user.id;
             if (interaction.customId === 'select_tool') {
@@ -1095,6 +1173,9 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
+        // ==========================================
+        // MODAL SUBMIT
+        // ==========================================
         if (interaction.isModalSubmit()) {
             const userId = interaction.user.id;
             const ud = loadUser(userId, interaction.user.username);
@@ -1143,6 +1224,9 @@ client.on('interactionCreate', async interaction => {
             return interaction.reply({ content: responseMsg, ephemeral: true });
         }
 
+        // ==========================================
+        // BUTTONS
+        // ==========================================
         if (!interaction.isButton()) return;
         const id = interaction.customId;
         const userId = interaction.user.id;
@@ -1165,9 +1249,7 @@ client.on('interactionCreate', async interaction => {
         let ephemeralMsg = null;
         let ephemeralError = false;
 
-        // ==========================================
-        // START FARMING — ANTI EKSPLOITASI
-        // ==========================================
+        // START FARMING
         if (id === 'start_farming') {
             if (!interaction.guild) return interaction.reply({ content: '❌ Hanya di server.', ephemeral: true });
             await interaction.deferReply({ ephemeral: true });
@@ -1244,9 +1326,8 @@ client.on('interactionCreate', async interaction => {
                 }
 
                 console.log(`♻️ [${threadSource}] Redirect user ${interaction.user.username} ke thread lama`);
-
                 return interaction.editReply({ 
-                    content: `✅ Kamu sudah punya thread farming: ${thread}\n> Tidak bisa membuat thread baru. Klik tombol lagi untuk masuk.` 
+                    content: `✅ Kamu sudah punya thread farming: ${thread}\n> Tidak bisa membuat thread baru.` 
                 });
             }
 
@@ -1284,6 +1365,7 @@ client.on('interactionCreate', async interaction => {
             return interaction.editReply({ content: `✅ Thread farming dibuat: ${thread}` });
         }
 
+        // CUSTOM BUY
         if (id.startsWith('customblock_')) {
             const key = id.replace('customblock_', '');
             const b = SHOP_BLOCKS[key];
@@ -1298,6 +1380,7 @@ client.on('interactionCreate', async interaction => {
             return interaction.showModal(buildBuyModal(`Beli ${l.name}`, `modal_buylock_${key}`, `Harga: ${l.price.toLocaleString()}/lock`));
         }
 
+        // NAVIGASI
         if (id === 'nav_main')              ud.currentView = 'main';
         else if (id === 'nav_shop')         ud.currentView = 'shop';
         else if (id === 'nav_shop_tools')   ud.currentView = 'shop_tools';
@@ -1311,6 +1394,7 @@ client.on('interactionCreate', async interaction => {
         else if (id === 'nav_profile')      ud.currentView = 'profile';
         else if (id === 'nav_event')        ud.currentView = 'event';
 
+        // TOGGLE AUTO FARM
         else if (id === 'btn_toggle_auto') {
             const isCurrentlyRunning = autoFarmIntervals.has(userId);
             if (isCurrentlyRunning) {
@@ -1333,6 +1417,7 @@ client.on('interactionCreate', async interaction => {
             db.saveUser(ud);
         }
 
+        // MANUAL FARM
         else if (id === 'btn_farm') {
             if (getTotalBlocks(ud) <= 0) {
                 ephemeralMsg = '❌ Semua block habis!';
@@ -1344,6 +1429,7 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
+        // BELI TOOL
         else if (id.startsWith('buy_') && SHOP_TOOLS[id.slice(4)]) {
             const key = id.slice(4);
             const t = SHOP_TOOLS[key];
@@ -1357,6 +1443,7 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
+        // SELECT BLOCK
         else if (id.startsWith('selectblock_')) {
             const key = id.slice(12);
             if (!SHOP_BLOCKS[key]) { ephemeralMsg = '❌ Block tidak valid.'; ephemeralError = true; }
@@ -1367,6 +1454,7 @@ client.on('interactionCreate', async interaction => {
             else { ud.selectedBlock = key; db.saveUser(ud); ephemeralMsg = `✅ Pakai **${SHOP_BLOCKS[key].name}**!`; }
         }
 
+        // BELI ITEM
         else if (id.startsWith('buy_') && SHOP_ITEMS[id.slice(4)]) {
             const key = id.slice(4);
             const i = SHOP_ITEMS[key];
@@ -1374,6 +1462,7 @@ client.on('interactionCreate', async interaction => {
             else { ud.gems -= i.price; ud.items[key]++; db.saveUser(ud); ephemeralMsg = `✅ Beli **${i.name}**!`; }
         }
 
+        // PAKAI ITEM
         else if (id.startsWith('use_')) {
             const key = id.slice(4);
             if (ud.items[key] <= 0) { ephemeralMsg = '❌ Tidak punya item ini.'; ephemeralError = true; }
@@ -1386,6 +1475,7 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
+        // EQUIP TOOL
         else if (id.startsWith('equip_')) {
             const key = id.slice(6);
             if (!ud.ownedTools.includes(key)) { ephemeralMsg = '❌ Tidak punya tool ini.'; ephemeralError = true; }
@@ -1397,6 +1487,7 @@ client.on('interactionCreate', async interaction => {
             ephemeralMsg = '✅ Tool di-unequip.'; 
         }
 
+        // UPGRADE SKILL
         else if (id.startsWith('up_')) {
             const key = id.slice(3);
             const s = SKILLS[key];
@@ -1437,8 +1528,10 @@ client.on('interactionCreate', async interaction => {
         }
 
         refreshAllLeaderboards();
+
     } catch (err) {
         if (err?.code === 10062) console.log('⚠️ [10062] Interaction expired');
+        else if (err?.code === 40060) console.log('⚠️ [40060] Interaction already acknowledged');
         else console.error('❌ Interaction error:', err);
     }
 });
