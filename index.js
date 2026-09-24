@@ -1004,6 +1004,9 @@ client.on('messageReactionRemove', async (reaction, user) => {
         await utility.handleReactionRemove(reaction, user);
     } catch (e) { console.error('reactionRemove err:', e.message); }
 });
+client.on('voiceStateUpdate', async (oldState, newState) => {
+    try { await voiceMod.handleVoiceStateUpdate(client, oldState, newState); } catch (e) {}
+});
 
 // ==========================================
 // INTERACTION HANDLER
