@@ -9,6 +9,7 @@ const {
 // KONFIGURASI
 // ==========================================
 const DEFAULT_CATEGORY_NAME = '🔊 Private Voice';
+const PANEL_UPDATE_THROTTLE = 1500; // ms — anti rate limit
 
 // ==========================================
 // SLASH COMMANDS
@@ -31,18 +32,29 @@ const VOICE_COMMANDS = [
 // ==========================================
 // STATE (in-memory)
 // ==========================================
-const activeVoices = new Map();
+const activeVoices = new Map();      // channelId -> data
+const panelUpdateLocks = new Map();  // channelId -> timeoutId (throttle)
 
+// Data structure:
+// {
+//     channelId, ownerId, guildId,
+//     panelChannelId, panelMessageId,
+//     locked, userLimit, emptyTimer, categoryId,
+//     _lastUpdate: timestamp
+// }
+
+// ==========================================
+// GETTER (return REFERENCE — biar bisa mutate)
+// ==========================================
 function getVoiceByOwner(userId) {
-    for (const [cid, d] of activeVoices) if (d.ownerId === userId) return { channelId: cid, ...d };
+    for (const d of activeVoices.values()) if (d.ownerId === userId) return d;
     return null;
 }
 function getVoiceByChannel(channelId) {
-    const d = activeVoices.get(channelId);
-    return d ? { channelId, ...d } : null;
+    return activeVoices.get(channelId) || null;
 }
 function getVoiceByPanelMessage(messageId) {
-    for (const [cid, d] of activeVoices) if (d.panelMessageId === messageId) return { channelId: cid, ...d };
+    for (const d of activeVoices.values()) if (d.panelMessageId === messageId) return d;
     return null;
 }
 
@@ -79,7 +91,7 @@ async function resolveCategory(guild, selectedCategory, botMember) {
 }
 
 // ==========================================
-// PANEL
+// PANEL BUILDER
 // ==========================================
 function buildPanelEmbed(vc, data) {
     const lock = data.locked ? '🔒 **Private**' : '🔓 **Public**';
@@ -121,18 +133,48 @@ function buildPanelButtons(data) {
     return [r1, r2];
 }
 
-async function updatePanel(client, channelId) {
+// ==========================================
+// UPDATE PANEL (dengan throttle)
+// ==========================================
+async function updatePanel(client, channelId, force = false) {
     const data = activeVoices.get(channelId);
     if (!data || !data.panelMessageId) return;
+
+    // Throttle — kalau baru saja update, schedule nanti
+    if (!force && data._lastUpdate && Date.now() - data._lastUpdate < PANEL_UPDATE_THROTTLE) {
+        if (!panelUpdateLocks.has(channelId)) {
+            const t = setTimeout(async () => {
+                panelUpdateLocks.delete(channelId);
+                await updatePanel(client, channelId, true);
+            }, PANEL_UPDATE_THROTTLE);
+            panelUpdateLocks.set(channelId, t);
+        }
+        return;
+    }
+
+    data._lastUpdate = Date.now();
+
     try {
-        const ch = await client.channels.fetch(data.panelChannelId).catch(() => null);
-        if (!ch) return;
-        const msg = await ch.messages.fetch(data.panelMessageId).catch(() => null);
-        if (!msg) return;
         const vc = await client.channels.fetch(channelId).catch(() => null);
-        if (!vc) return;
-        await msg.edit({ embeds: [buildPanelEmbed(vc, data)], components: buildPanelButtons(data) });
-    } catch (e) { /* silent */ }
+        if (!vc) {
+            // Voice sudah tidak ada → bersihkan
+            activeVoices.delete(channelId);
+            return;
+        }
+
+        const pch = await client.channels.fetch(data.panelChannelId).catch(() => null);
+        if (!pch) return;
+        const msg = await pch.messages.fetch(data.panelMessageId).catch(() => null);
+        if (!msg) return;
+
+        // Rebuild embed dari data terbaru + vc.members.size
+        const newEmbed = buildPanelEmbed(vc, data);
+        const newButtons = buildPanelButtons(data);
+
+        await msg.edit({ embeds: [newEmbed], components: newButtons });
+    } catch (e) {
+        // Rate limit atau error lain — silent
+    }
 }
 
 // ==========================================
@@ -234,7 +276,9 @@ async function handleMakeVoice(interaction) {
         return interaction.editReply({ content: `❌ Gagal kirim panel: ${e.message}` });
     }
 
+    // SIMPAN DENGAN channelId di dalam data (biar getter bisa return reference)
     activeVoices.set(channel.id, {
+        channelId: channel.id,
         ownerId: interaction.user.id,
         guildId: interaction.guild.id,
         panelChannelId: interaction.channel.id,
@@ -242,7 +286,8 @@ async function handleMakeVoice(interaction) {
         locked: true,
         userLimit: limit,
         emptyTimer: null,
-        categoryId: category.id
+        categoryId: category.id,
+        _lastUpdate: 0
     });
 
     try {
@@ -274,9 +319,7 @@ async function handleVoiceButton(interaction) {
     const id = interaction.customId;
 
     // ==========================================
-    // FIX — Handle confirm/cancel delete DULU
-    // Tombol ini di pesan ephemeral, bukan panel.
-    // Jadi cari voice by OWNER, bukan by panel message.
+    // CONFIRM / CANCEL DELETE — cari voice by OWNER
     // ==========================================
     if (id === 'vc_confirm_delete' || id === 'vc_cancel_delete') {
         const voice = getVoiceByOwner(interaction.user.id);
@@ -288,7 +331,6 @@ async function handleVoiceButton(interaction) {
             return interaction.update({ content: '❌ Dibatalkan.', components: [] });
         }
 
-        // Confirm delete
         const vc = await interaction.guild.channels.fetch(voice.channelId).catch(() => null);
         if (!vc) {
             activeVoices.delete(voice.channelId);
@@ -296,20 +338,19 @@ async function handleVoiceButton(interaction) {
             return interaction.update({ content: '❌ Voice sudah tidak ada.', components: [] });
         }
 
-        // Batalkan empty timer kalau ada
         if (voice.emptyTimer) {
             clearTimeout(voice.emptyTimer);
             voice.emptyTimer = null;
         }
+        if (panelUpdateLocks.has(voice.channelId)) {
+            clearTimeout(panelUpdateLocks.get(voice.channelId));
+            panelUpdateLocks.delete(voice.channelId);
+        }
 
-        // Hapus dari state dulu
         activeVoices.delete(voice.channelId);
 
-        // Hapus channel
-        let deleted = false;
         try {
             await vc.delete('Owner delete private voice');
-            deleted = true;
         } catch (e) {
             console.error('❌ Gagal hapus voice:', e.message);
             return interaction.update({
@@ -318,15 +359,13 @@ async function handleVoiceButton(interaction) {
             });
         }
 
-        // Update panel jadi "dihapus"
         await markPanelDeleted(interaction.client, voice, '🗑️ Voice dihapus oleh owner.');
-
         console.log(`🔊 [Voice] ${voice.channelId} dihapus oleh owner ${interaction.user.username}`);
         return interaction.update({ content: '✅ Voice berhasil dihapus.', components: [] });
     }
 
     // ==========================================
-    // Untuk tombol lain, baru cari panel
+    // PANEL BUTTONS — cari by panel message
     // ==========================================
     const data = getVoiceByPanelMessage(interaction.message.id);
     if (!data) {
@@ -353,13 +392,15 @@ async function handleVoiceButton(interaction) {
         } catch (e) {
             return interaction.reply({ content: `❌ Gagal: ${e.message}`, ephemeral: true });
         }
+        // Mutate data (sekarang reference valid)
         data.locked = newLocked;
+
         await interaction.deferUpdate().catch(() => {});
-        await updatePanel(interaction.client, data.channelId);
+        await updatePanel(interaction.client, data.channelId, true);
         return;
     }
 
-    // DELETE (tampilkan konfirmasi)
+    // DELETE (konfirmasi)
     if (id === 'vc_delete') {
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('vc_confirm_delete').setLabel('✅ Ya, Hapus').setStyle(ButtonStyle.Danger),
@@ -372,7 +413,7 @@ async function handleVoiceButton(interaction) {
         });
     }
 
-    // RENAME → Modal
+    // RENAME
     if (id === 'vc_rename') {
         const modal = new ModalBuilder().setCustomId('vc_modal_rename').setTitle('Rename Voice');
         const input = new TextInputBuilder()
@@ -385,7 +426,7 @@ async function handleVoiceButton(interaction) {
         return interaction.showModal(modal);
     }
 
-    // SET LIMIT → Modal
+    // SET LIMIT
     if (id === 'vc_limit') {
         const modal = new ModalBuilder().setCustomId('vc_modal_limit').setTitle('Set User Limit');
         const input = new TextInputBuilder()
@@ -398,7 +439,7 @@ async function handleVoiceButton(interaction) {
         return interaction.showModal(modal);
     }
 
-    // INVITE → UserSelect
+    // INVITE
     if (id === 'vc_invite') {
         const select = new UserSelectMenuBuilder()
             .setCustomId('vc_select_invite')
@@ -412,7 +453,7 @@ async function handleVoiceButton(interaction) {
         });
     }
 
-    // KICK → UserSelect
+    // KICK
     if (id === 'vc_kick') {
         const members = vc.members.filter(m => m.id !== data.ownerId);
         if (members.size === 0) {
@@ -444,7 +485,7 @@ async function handleVoiceButton(interaction) {
             Connect: true, ManageChannels: true, MoveMembers: true
         }).catch(() => {});
         await interaction.deferUpdate().catch(() => {});
-        await updatePanel(interaction.client, data.channelId);
+        await updatePanel(interaction.client, data.channelId, true);
         return;
     }
 }
@@ -470,7 +511,7 @@ async function handleVoiceModal(interaction) {
             return interaction.reply({ content: `❌ Gagal rename: ${e.message}`, ephemeral: true });
         }
         await interaction.reply({ content: `✅ Nama diubah ke **${newName}**`, ephemeral: true });
-        await updatePanel(interaction.client, voice.channelId);
+        await updatePanel(interaction.client, voice.channelId, true);
         return;
     }
 
@@ -483,9 +524,10 @@ async function handleVoiceModal(interaction) {
         try { await vc.setUserLimit(limit, 'Owner set limit'); } catch (e) {
             return interaction.reply({ content: `❌ Gagal set limit: ${e.message}`, ephemeral: true });
         }
+        // Mutate data (reference valid)
         voice.userLimit = limit;
         await interaction.reply({ content: `✅ Limit diubah ke **${limit === 0 ? '∞' : limit}**`, ephemeral: true });
-        await updatePanel(interaction.client, voice.channelId);
+        await updatePanel(interaction.client, voice.channelId, true);
         return;
     }
 }
@@ -538,48 +580,62 @@ async function handleVoiceSelect(interaction) {
 }
 
 // ==========================================
-// VOICE STATE UPDATE (auto-delete kalau kosong)
+// VOICE STATE UPDATE — REALTIME MEMBER COUNT + AUTO DELETE
 // ==========================================
 async function handleVoiceStateUpdate(client, oldState, newState) {
-    const channelId = oldState.channelId;
-    if (!channelId) return;
-    const data = activeVoices.get(channelId);
-    if (!data) return;
+    // Kumpulkan channelId yang terlibat
+    const channelIds = new Set();
+    if (oldState.channelId && activeVoices.has(oldState.channelId)) channelIds.add(oldState.channelId);
+    if (newState.channelId && activeVoices.has(newState.channelId)) channelIds.add(newState.channelId);
 
-    try {
-        const vc = await client.channels.fetch(channelId).catch(() => null);
-        if (!vc) {
-            activeVoices.delete(channelId);
-            return;
-        }
+    for (const channelId of channelIds) {
+        const data = activeVoices.get(channelId);
+        if (!data) continue;
 
-        if (vc.members.size === 0) {
-            if (data.emptyTimer) return;
-            data.emptyTimer = setTimeout(async () => {
-                try {
-                    const ch = await client.channels.fetch(channelId).catch(() => null);
-                    if (!ch) { activeVoices.delete(channelId); return; }
-                    if (ch.members.size > 0) {
-                        data.emptyTimer = null;
-                        return;
-                    }
-                    activeVoices.delete(channelId);
-                    await ch.delete('Private voice kosong, auto-delete').catch(() => {});
-                    await markPanelDeleted(client, data, '🗑️ Voice otomatis dihapus (kosong).');
-                    console.log(`🔊 [Voice] Auto-delete ${channelId} (kosong)`);
-                } catch (e) { console.error('Voice auto-delete:', e.message); }
-            }, 30 * 1000);
-        } else {
-            if (data.emptyTimer) {
-                clearTimeout(data.emptyTimer);
-                data.emptyTimer = null;
+        try {
+            const vc = await client.channels.fetch(channelId).catch(() => null);
+            if (!vc) {
+                activeVoices.delete(channelId);
+                continue;
             }
-        }
-    } catch (e) { /* silent */ }
+
+            // ===== REALTIME UPDATE PANEL =====
+            // Panel diupdate tiap ada join/leave (dengan throttle)
+            await updatePanel(client, channelId);
+
+            // ===== AUTO DELETE KALAU KOSONG =====
+            if (vc.members.size === 0) {
+                if (data.emptyTimer) continue;
+                data.emptyTimer = setTimeout(async () => {
+                    try {
+                        const ch = await client.channels.fetch(channelId).catch(() => null);
+                        if (!ch) { activeVoices.delete(channelId); return; }
+                        if (ch.members.size > 0) {
+                            data.emptyTimer = null;
+                            return;
+                        }
+                        activeVoices.delete(channelId);
+                        if (panelUpdateLocks.has(channelId)) {
+                            clearTimeout(panelUpdateLocks.get(channelId));
+                            panelUpdateLocks.delete(channelId);
+                        }
+                        await ch.delete('Private voice kosong, auto-delete').catch(() => {});
+                        await markPanelDeleted(client, data, '🗑️ Voice otomatis dihapus (kosong).');
+                        console.log(`🔊 [Voice] Auto-delete ${channelId} (kosong)`);
+                    } catch (e) { console.error('Voice auto-delete:', e.message); }
+                }, 30 * 1000);
+            } else {
+                if (data.emptyTimer) {
+                    clearTimeout(data.emptyTimer);
+                    data.emptyTimer = null;
+                }
+            }
+        } catch (e) { /* silent */ }
+    }
 }
 
 // ==========================================
-// CHANNEL DELETE HANDLER (kalau voice dihapus manual)
+// CHANNEL DELETE HANDLER
 // ==========================================
 async function handleChannelDelete(client, channel) {
     const data = activeVoices.get(channel.id);
@@ -588,6 +644,10 @@ async function handleChannelDelete(client, channel) {
     if (data.emptyTimer) {
         clearTimeout(data.emptyTimer);
         data.emptyTimer = null;
+    }
+    if (panelUpdateLocks.has(channel.id)) {
+        clearTimeout(panelUpdateLocks.get(channel.id));
+        panelUpdateLocks.delete(channel.id);
     }
 
     activeVoices.delete(channel.id);
