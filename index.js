@@ -10,6 +10,7 @@ const db = require('./database');
 const { handleAdminInteraction, handleMemberJoin } = require('./admin');
 const utility = require('./utility');
 const { checkOwnerOnly, blockNonOwner } = require('./owner');
+const voiceMod = require('./voice');
 const updateMod = require('./update');
 const fs = require('fs');
 const path = require('path');
