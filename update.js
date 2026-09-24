@@ -6,11 +6,11 @@ const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('disc
 const UPDATE_COMMANDS = [
     new SlashCommandBuilder()
         .setName('update')
-        .setDescription('📢 Update bot — kirim changelog ke channel')
+        .setDescription('📢 Update bot — tambahkan changelog ke channel')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addSubcommand(s => s
             .setName('send')
-            .setDescription('Kirim update ke channel')
+            .setDescription('Tambah update ke changelog')
             .addStringOption(o => o.setName('version').setDescription('Versi (contoh: v1.0.1)').setRequired(true).setMaxLength(20))
             .addStringOption(o => o.setName('title').setDescription('Judul update').setRequired(true).setMaxLength(200))
             .addStringOption(o => o.setName('content').setDescription('Isi update (boleh multi-baris)').setRequired(true).setMaxLength(4000))
@@ -30,8 +30,12 @@ const UPDATE_COMMANDS = [
         )
         .addSubcommand(s => s
             .setName('setchannel')
-            .setDescription('Set channel untuk update')
+            .setDescription('Set channel untuk changelog')
             .addChannelOption(o => o.setName('channel').setDescription('Channel update').setRequired(true))
+        )
+        .addSubcommand(s => s
+            .setName('reset')
+            .setDescription('Reset changelog — mulai pesan baru')
         )
         .addSubcommand(s => s
             .setName('history')
@@ -88,11 +92,23 @@ async function handleUpdateInteraction(interaction) {
 
         const config = db.getUpdateConfig(guildId) || {};
         config.channelId = ch.id;
+        config.changelogMessageId = null; // reset, biar buat pesan changelog baru
         db.setUpdateConfig(guildId, config);
 
         return interaction.editReply({ 
-            content: `✅ **Update channel diset!**\n> Channel: ${ch}\n\n💡 Pakai \`/update send\` untuk kirim update.`
+            content: `✅ **Update channel diset!**\n> Channel: ${ch}\n\n💡 Pakai \`/update send\` untuk menambahkan update ke changelog.`
         });
+    }
+
+    // ==========================================
+    // /update reset
+    // ==========================================
+    if (sub === 'reset') {
+        await interaction.deferReply({ ephemeral: true });
+        const config = db.getUpdateConfig(guildId);
+        if (!config) return interaction.editReply({ content: '❌ Belum di-setup.' });
+        db.setChangelogMessageId(guildId, null);
+        return interaction.editReply({ content: `✅ Changelog di-reset. Update berikutnya akan mulai pesan baru.\n> Pesan lama tetap tersimpan di channel.` });
     }
 
     // ==========================================
@@ -110,7 +126,8 @@ async function handleUpdateInteraction(interaction) {
             .setTitle('📢 Update Config')
             .addFields(
                 { name: '📌 Channel', value: `<#${config.channelId}>`, inline: true },
-                { name: '📊 Total Update', value: `${count}`, inline: true }
+                { name: '📊 Total Update', value: `${count}`, inline: true },
+                { name: '📝 Changelog Msg', value: config.changelogMessageId ? `\`${config.changelogMessageId}\`` : '*Belum ada*', inline: false }
             )
         ] });
     }
@@ -136,7 +153,7 @@ async function handleUpdateInteraction(interaction) {
     }
 
     // ==========================================
-    // /update send
+    // /update send — TAMBAH (bukan ganti)
     // ==========================================
     if (sub === 'send') {
         await interaction.deferReply({ ephemeral: true });
@@ -154,31 +171,69 @@ async function handleUpdateInteraction(interaction) {
         const type = interaction.options.getString('type') || 'improvement';
         const mention = interaction.options.getString('mention') || 'none';
 
-        const embed = buildUpdateEmbed({
+        // 1. Simpan ke database dulu
+        db.addUpdateHistory(guildId, version, title, content, type, interaction.user.id);
+
+        const newEmbed = buildUpdateEmbed({
             version, title, content, type,
             author: interaction.user.username,
             timestamp: Date.now()
         });
 
-        let mentionText = '';
-        if (mention === 'everyone') mentionText = '@everyone';
-        else if (mention === 'here') mentionText = '@here';
+        // 2. Coba TAMBAHKAN ke message yang sudah ada
+        let addedToExisting = false;
+        let targetMessageId = config.changelogMessageId;
 
-        try {
-            await channel.send({ 
-                content: mentionText || null,
-                embeds: [embed],
-                allowedMentions: mentionText ? { parse: ['everyone'] } : { parse: [] }
-            });
-        } catch (e) {
-            return interaction.editReply({ content: `❌ Gagal kirim: ${e.message}` });
+        if (targetMessageId) {
+            try {
+                const existingMsg = await channel.messages.fetch(targetMessageId);
+                if (existingMsg) {
+                    // Ambil embed yang sudah ada
+                    const currentEmbeds = Array.from(existingMsg.embeds);
+                    
+                    // Discord max 10 embed per message
+                    if (currentEmbeds.length < 10) {
+                        // TAMBAHKAN embed baru di paling atas (recent first)
+                        const newEmbeds = [newEmbed, ...currentEmbeds];
+                        await existingMsg.edit({ embeds: newEmbeds });
+                        addedToExisting = true;
+                        console.log(`📢 Update ditambahkan ke changelog (${newEmbeds.length}/10 embeds)`);
+                    } else {
+                        // Sudah 10 embed, buat message baru
+                        console.log(`📢 Changelog penuh (10 embeds), buat message baru`);
+                        addedToExisting = false;
+                    }
+                }
+            } catch (e) {
+                // Message lama sudah dihapus, buat baru
+                console.log(`⚠️ Changelog message tidak ditemukan: ${e.message}`);
+                addedToExisting = false;
+            }
         }
 
-        db.addUpdateHistory(guildId, version, title, content, type, interaction.user.id);
-        console.log(`📢 Update dikirim: ${version} - ${title} oleh ${interaction.user.username}`);
+        // 3. Kalau belum bisa tambah ke yang lama, buat pesan baru
+        if (!addedToExisting) {
+            let mentionText = '';
+            if (mention === 'everyone') mentionText = '@everyone';
+            else if (mention === 'here') mentionText = '@here';
+
+            try {
+                const sentMsg = await channel.send({ 
+                    content: mentionText || null,
+                    embeds: [newEmbed],
+                    allowedMentions: mentionText ? { parse: ['everyone'] } : { parse: [] }
+                });
+                db.setChangelogMessageId(guildId, sentMsg.id);
+                console.log(`📢 Changelog message baru dibuat: ${sentMsg.id}`);
+            } catch (e) {
+                return interaction.editReply({ content: `❌ Gagal kirim: ${e.message}` });
+            }
+        }
+
+        console.log(`📢 Update terkirim: ${version} - ${title} oleh ${interaction.user.username}`);
 
         return interaction.editReply({ 
-            content: `✅ Update terkirim ke ${channel}!\n> **${version}** — ${title}` 
+            content: `✅ Update berhasil ditambahkan ke changelog!\n> **${version}** — ${title}\n> ${addedToExisting ? '*Ditambahkan ke pesan yang sudah ada*' : '*Pesan changelog baru dibuat*'}`
         });
     }
 
