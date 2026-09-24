@@ -6,6 +6,11 @@ const {
 } = require('discord.js');
 
 // ==========================================
+// KONFIGURASI
+// ==========================================
+const DEFAULT_CATEGORY_NAME = '🔊 Private Voice';
+
+// ==========================================
 // SLASH COMMANDS
 // ==========================================
 const VOICE_COMMANDS = [
@@ -14,13 +19,19 @@ const VOICE_COMMANDS = [
         .setDescription('🔊 Bikin private voice channel')
         .addStringOption(o => o.setName('name').setDescription('Nama voice').setRequired(false).setMaxLength(100))
         .addIntegerOption(o => o.setName('limit').setDescription('Max user (0 = unlimited)').setRequired(false).setMinValue(0).setMaxValue(99))
+        .addChannelOption(o => o
+            .setName('category')
+            .setDescription('Kategori tempat voice dibuat')
+            .setRequired(false)
+            .addChannelTypes(ChannelType.GuildCategory)
+        )
         .toJSON()
 ];
 
 // ==========================================
 // STATE (in-memory)
 // ==========================================
-const activeVoices = new Map(); // channelId -> { ownerId, guildId, panelChannelId, panelMessageId, locked, userLimit, emptyTimer }
+const activeVoices = new Map(); // channelId -> { ownerId, guildId, panelChannelId, panelMessageId, locked, userLimit, emptyTimer, categoryId }
 
 function getVoiceByOwner(userId) {
     for (const [cid, d] of activeVoices) if (d.ownerId === userId) return { channelId: cid, ...d };
@@ -36,17 +47,56 @@ function getVoiceByPanelMessage(messageId) {
 }
 
 // ==========================================
+// HELPER — CARI / BIKIN CATEGORY
+// ==========================================
+async function resolveCategory(guild, selectedCategory, botMember) {
+    // 1. Kalau user pilih category, pakai itu
+    if (selectedCategory) {
+        // Cek permission bot di category
+        const perms = selectedCategory.permissionsFor(botMember);
+        if (!perms || !perms.has(PermissionFlagsBits.ManageChannels)) {
+            return { error: `Bot tidak punya izin **Manage Channels** di kategori ${selectedCategory}.` };
+        }
+        return { category: selectedCategory };
+    }
+
+    // 2. Cari category bernama DEFAULT_CATEGORY_NAME
+    let category = guild.channels.cache.find(
+        c => c.type === ChannelType.GuildCategory && c.name === DEFAULT_CATEGORY_NAME
+    );
+
+    // 3. Kalau tidak ada, bikin baru
+    if (!category) {
+        try {
+            category = await guild.channels.create({
+                name: DEFAULT_CATEGORY_NAME,
+                type: ChannelType.GuildCategory,
+                reason: 'Auto-create kategori private voice'
+            });
+            console.log(`📁 [Voice] Kategori baru dibuat: ${DEFAULT_CATEGORY_NAME}`);
+        } catch (e) {
+            return { error: `Gagal buat kategori: ${e.message}` };
+        }
+    }
+
+    return { category };
+}
+
+// ==========================================
 // PANEL
 // ==========================================
 function buildPanelEmbed(vc, data) {
     const lock = data.locked ? '🔒 **Private**' : '🔓 **Public**';
     const limit = data.userLimit === 0 ? '∞' : data.userLimit;
     const members = vc.members ? vc.members.size : 0;
+    const parent = vc.parent ? vc.parent.name : '-';
     return new EmbedBuilder()
         .setColor(data.locked ? '#ED4245' : '#57F287')
         .setTitle(`🔊 Voice Control — ${vc.name}`)
         .setDescription(
             `**Owner:** <@${data.ownerId}>\n` +
+            `**Voice:** <#${vc.id}>\n` +
+            `**Kategori:** 📁 ${parent}\n` +
             `**Status:** ${lock}\n` +
             `**Limit:** ${limit} user\n` +
             `**Member sekarang:** ${members}\n\n` +
@@ -116,22 +166,39 @@ async function handleMakeVoice(interaction) {
     await interaction.deferReply({ ephemeral: true });
     if (!interaction.guild) return interaction.editReply({ content: '❌ Hanya di server.' });
 
+    const botMember = interaction.guild.members.me;
+    if (!botMember.permissions.has(PermissionFlagsBits.ManageChannels)) {
+        return interaction.editReply({ content: '❌ Bot butuh izin **Manage Channels**.' });
+    }
+
     // Cek user sudah punya voice
     const existing = getVoiceByOwner(interaction.user.id);
     if (existing) {
         const ch = await interaction.guild.channels.fetch(existing.channelId).catch(() => null);
-        if (ch) return interaction.editReply({ content: `❌ Kamu sudah punya voice: <#${existing.channelId}>` });
+        if (ch) {
+            return interaction.editReply({
+                content: `❌ Kamu sudah punya voice: <#${existing.channelId}>\n> Hapus dulu yang lama untuk membuat baru.`
+            });
+        }
         activeVoices.delete(existing.channelId);
     }
 
     const name = interaction.options.getString('name') || `🔊 ${interaction.user.username}`;
     const limit = interaction.options.getInteger('limit') ?? 0;
+    const selectedCategory = interaction.options.getChannel('category');
 
+    // Resolve category
+    const catRes = await resolveCategory(interaction.guild, selectedCategory, botMember);
+    if (catRes.error) return interaction.editReply({ content: `❌ ${catRes.error}` });
+    const category = catRes.category;
+
+    // Create voice channel
     let channel;
     try {
         channel = await interaction.guild.channels.create({
             name,
             type: ChannelType.GuildVoice,
+            parent: category.id,
             userLimit: limit,
             permissionOverwrites: [
                 { id: interaction.guild.id, deny: [PermissionFlagsBits.Connect] },
@@ -143,6 +210,7 @@ async function handleMakeVoice(interaction) {
         return interaction.editReply({ content: `❌ Gagal buat voice: ${e.message}` });
     }
 
+    // Kirim panel
     let panelMsg;
     try {
         panelMsg = await interaction.channel.send({
@@ -161,16 +229,32 @@ async function handleMakeVoice(interaction) {
         panelMessageId: panelMsg.id,
         locked: true,
         userLimit: limit,
-        emptyTimer: null
+        emptyTimer: null,
+        categoryId: category.id
     });
 
-    // Auto pindahkan creator ke voice-nya (kalau lagi di voice lain)
+    // Auto pindahkan creator ke voice-nya
     try {
         const member = await interaction.guild.members.fetch(interaction.user.id);
         if (member.voice.channel) await member.voice.setChannel(channel).catch(() => {});
     } catch {}
 
-    return interaction.editReply({ content: `✅ Voice dibuat: ${channel}\n> Panel kontrol dikirim di <#${interaction.channel.id}>.` });
+    // Reply dengan tujuan yang jelas
+    return interaction.editReply({
+        embeds: [new EmbedBuilder()
+            .setColor('#57F287')
+            .setTitle('✅ Private Voice Dibuat!')
+            .setDescription(
+                `**Voice kamu:** <#${channel.id}>\n` +
+                `**Kategori:** 📁 ${category.name}\n` +
+                `**Panel:** <#${interaction.channel.id}> (di bawah panel ini)\n\n` +
+                `> Klik **voice** di atas untuk join.\n` +
+                `> Kelola lewat panel dengan tombol 🔒 ✏️ 👥 ➕ 👢 👑 🗑️`
+            )
+            .setFooter({ text: 'GrowExs Private Voice' })
+            .setTimestamp()
+        ]
+    });
 }
 
 // ==========================================
@@ -216,7 +300,7 @@ async function handleVoiceButton(interaction) {
             new ButtonBuilder().setCustomId('vc_cancel_delete').setLabel('❌ Batal').setStyle(ButtonStyle.Secondary)
         );
         return interaction.reply({
-            content: '⚠️ Yakin mau hapus voice ini?',
+            content: `⚠️ Yakin mau hapus <#${data.channelId}>?`,
             components: [row],
             ephemeral: true
         });
@@ -262,7 +346,7 @@ async function handleVoiceButton(interaction) {
         });
     }
 
-    // KICK → UserSelect (dari member yang ada di voice)
+    // KICK → UserSelect
     if (id === 'vc_kick') {
         const members = vc.members.filter(m => m.id !== data.ownerId);
         if (members.size === 0) {
@@ -280,7 +364,7 @@ async function handleVoiceButton(interaction) {
         });
     }
 
-    // CLAIM (kalau owner sudah tidak ada di server)
+    // CLAIM
     if (id === 'vc_claim') {
         if (interaction.user.id === data.ownerId) {
             return interaction.reply({ content: '❌ Kamu sudah owner.', ephemeral: true });
@@ -323,8 +407,6 @@ async function handleVoiceButton(interaction) {
 // MODAL HANDLER
 // ==========================================
 async function handleVoiceModal(interaction) {
-    const data = getVoiceByPanelMessage(null); // akan dicari via channel/user
-    // Cari voice berdasarkan owner
     const voice = getVoiceByOwner(interaction.user.id);
     if (!voice) {
         return interaction.reply({ content: '❌ Kamu tidak punya voice aktif.', ephemeral: true });
@@ -423,7 +505,6 @@ async function handleVoiceStateUpdate(client, oldState, newState) {
             return;
         }
 
-        // Kalau kosong → mulai timer 30 detik
         if (vc.members.size === 0) {
             if (data.emptyTimer) return;
             data.emptyTimer = setTimeout(async () => {
@@ -434,7 +515,6 @@ async function handleVoiceStateUpdate(client, oldState, newState) {
                         data.emptyTimer = null;
                         return;
                     }
-                    // Hapus panel message
                     try {
                         const pch = await client.channels.fetch(data.panelChannelId).catch(() => null);
                         if (pch) {
@@ -451,7 +531,6 @@ async function handleVoiceStateUpdate(client, oldState, newState) {
                 } catch (e) { console.error('Voice auto-delete:', e.message); }
             }, 30 * 1000);
         } else {
-            // Ada member, batalkan timer
             if (data.emptyTimer) {
                 clearTimeout(data.emptyTimer);
                 data.emptyTimer = null;
