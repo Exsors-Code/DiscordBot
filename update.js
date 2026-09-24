@@ -1,5 +1,4 @@
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
-const translate = require('google-translate-api-x');
 
 // ==========================================
 // SLASH COMMANDS
@@ -11,7 +10,7 @@ const UPDATE_COMMANDS = [
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addSubcommand(s => s
             .setName('send')
-            .setDescription('Tambah update ke changelog (auto-translate ke EN)')
+            .setDescription('Tambah update ke changelog')
             .addStringOption(o => o.setName('version').setDescription('Versi (contoh: v1.0.1)').setRequired(true).setMaxLength(20))
             .addStringOption(o => o.setName('title').setDescription('Judul update').setRequired(true).setMaxLength(200))
             .addStringOption(o => o.setName('content').setDescription('Isi update (boleh multi-baris)').setRequired(true).setMaxLength(4000))
@@ -28,14 +27,10 @@ const UPDATE_COMMANDS = [
                 { name: 'Ya, @here', value: 'here' },
                 { name: 'Tidak', value: 'none' }
             ))
-            .addStringOption(o => o.setName('translate').setDescription('Auto-translate ke English?').setRequired(false).addChoices(
-                { name: 'Ya, tampil ID + EN', value: 'yes' },
-                { name: 'Tidak, ID saja', value: 'no' }
-            ))
         )
         .addSubcommand(s => s
             .setName('sendmulti')
-            .setDescription('📦 Kirim update multi-embed (auto-translate ke EN)')
+            .setDescription('📦 Kirim update multi-embed (pisah pakai "### Judul")')
             .addStringOption(o => o.setName('version').setDescription('Versi (contoh: v1.0)').setRequired(true).setMaxLength(20))
             .addStringOption(o => o.setName('title').setDescription('Judul utama (fallback)').setRequired(true).setMaxLength(200))
             .addStringOption(o => o.setName('content').setDescription('Isi update — pisahkan pakai "### Judul Section"').setRequired(true).setMaxLength(4000))
@@ -51,10 +46,6 @@ const UPDATE_COMMANDS = [
                 { name: 'Ya, @everyone', value: 'everyone' },
                 { name: 'Ya, @here', value: 'here' },
                 { name: 'Tidak', value: 'none' }
-            ))
-            .addStringOption(o => o.setName('translate').setDescription('Auto-translate ke English?').setRequired(false).addChoices(
-                { name: 'Ya, tampil ID + EN', value: 'yes' },
-                { name: 'Tidak, ID saja', value: 'no' }
             ))
         )
         .addSubcommand(s => s
@@ -108,25 +99,23 @@ const UPDATE_COMMANDS = [
 // TYPE CONFIG
 // ==========================================
 const UPDATE_TYPES = {
-    feature:     { emoji: '🆕', labelID: 'Fitur Baru', labelEN: 'New Feature', color: '#57F287' },
-    bugfix:      { emoji: '🐛', labelID: 'Bug Fix',    labelEN: 'Bug Fix',     color: '#ED4245' },
-    improvement: { emoji: '🔧', labelID: 'Perbaikan',  labelEN: 'Improvement', color: '#5865F2' },
-    perf:        { emoji: '⚡', labelID: 'Performance', labelEN: 'Performance', color: '#F1C40F' },
-    hotfix:      { emoji: '🔥', labelID: 'Hotfix',     labelEN: 'Hotfix',      color: '#E67E22' },
-    security:    { emoji: '🔒', labelID: 'Security',   labelEN: 'Security',    color: '#9B59B6' }
+    feature:     { emoji: '🆕', label: 'Fitur Baru',  color: '#57F287' },
+    bugfix:      { emoji: '🐛', label: 'Bug Fix',     color: '#ED4245' },
+    improvement: { emoji: '🔧', label: 'Perbaikan',   color: '#5865F2' },
+    perf:        { emoji: '⚡', label: 'Performance', color: '#F1C40F' },
+    hotfix:      { emoji: '🔥', label: 'Hotfix',      color: '#E67E22' },
+    security:    { emoji: '🔒', label: 'Security',    color: '#9B59B6' }
 };
 
 // ==========================================
 // BUILD EMBED
 // ==========================================
-function buildUpdateEmbed({ version, title, content, type, author, timestamp, lang = 'id' }) {
+function buildUpdateEmbed({ version, title, content, type, author, timestamp }) {
     const cfg = UPDATE_TYPES[type] || UPDATE_TYPES.improvement;
-    const flag = lang === 'en' ? '🇬🇧' : '🇮🇩';
-    const label = lang === 'en' ? cfg.labelEN : cfg.labelID;
 
     return new EmbedBuilder()
         .setColor(cfg.color)
-        .setTitle(`${flag} ${cfg.emoji} ${label} — ${version}`)
+        .setTitle(`${cfg.emoji} ${cfg.label} — ${version}`)
         .setDescription(`### ${title}\n\n${content}`)
         .setFooter({ text: `Update by ${author} • GrowExs Bot` })
         .setTimestamp(timestamp || Date.now());
@@ -166,31 +155,6 @@ function splitContent(raw) {
     }
 
     return sections.filter(s => s.body.length > 0 || s.title);
-}
-
-// ==========================================
-// AUTO TRANSLATE ID → EN
-// ==========================================
-async function translateToEnglish(text) {
-    if (!text || text.trim().length === 0) return text;
-    try {
-        const result = await translate(text, { to: 'en' });
-        return result.text;
-    } catch (e) {
-        console.error('❌ Translate error:', e.message);
-        return null;
-    }
-}
-
-async function translateSection(section) {
-    const [enTitle, enBody] = await Promise.all([
-        translateToEnglish(section.title),
-        translateToEnglish(section.body)
-    ]);
-    return {
-        title: enTitle || section.title,
-        body: enBody || section.body
-    };
 }
 
 // ==========================================
@@ -247,8 +211,7 @@ async function handleUpdateInteraction(interaction) {
             .addFields(
                 { name: '📌 Channel', value: `<#${config.channelId}>`, inline: true },
                 { name: '📊 Total Update', value: `${count}`, inline: true },
-                { name: '📝 Changelog Msg', value: config.changelogMessageId ? `\`${config.changelogMessageId}\`` : '*Belum ada*', inline: false },
-                { name: '🌐 Auto-Translate', value: 'Aktif (ID → EN)', inline: false }
+                { name: '📝 Changelog Msg', value: config.changelogMessageId ? `\`${config.changelogMessageId}\`` : '*Belum ada*', inline: false }
             )
         ] });
     }
@@ -275,7 +238,7 @@ async function handleUpdateInteraction(interaction) {
     }
 
     // ==========================================
-    // /update send — SIMPLE + AUTO TRANSLATE
+    // /update send — SIMPLE
     // ==========================================
     if (sub === 'send') {
         await interaction.deferReply({ ephemeral: true });
@@ -292,61 +255,37 @@ async function handleUpdateInteraction(interaction) {
         const content = interaction.options.getString('content');
         const type = interaction.options.getString('type') || 'improvement';
         const mention = interaction.options.getString('mention') || 'none';
-        const doTranslate = (interaction.options.getString('translate') || 'yes') === 'yes';
 
         let mentionText = '';
         if (mention === 'everyone') mentionText = '@everyone';
         else if (mention === 'here') mentionText = '@here';
 
-        const embeds = [];
-
-        embeds.push(buildUpdateEmbed({
+        const embed = buildUpdateEmbed({
             version, title, content, type,
             author: interaction.user.username,
-            timestamp: Date.now(),
-            lang: 'id'
-        }));
-
-        if (doTranslate) {
-            try {
-                const [enTitle, enContent] = await Promise.all([
-                    translateToEnglish(title),
-                    translateToEnglish(content)
-                ]);
-                embeds.push(buildUpdateEmbed({
-                    version,
-                    title: enTitle || title,
-                    content: enContent || content,
-                    type,
-                    author: interaction.user.username,
-                    timestamp: Date.now(),
-                    lang: 'en'
-                }));
-            } catch (e) {
-                console.error('Translate error:', e.message);
-            }
-        }
+            timestamp: Date.now()
+        });
 
         try {
             const sentMsg = await channel.send({
                 content: mentionText || null,
-                embeds,
+                embeds: [embed],
                 allowedMentions: mentionText ? { parse: ['everyone'] } : { parse: [] }
             });
             db.addUpdateHistory(guildId, version, title, content, type, interaction.user.id);
             db.setChangelogMessageId(guildId, sentMsg.id);
-            console.log(`📢 Update terkirim: ${version} - ${title} (${embeds.length} embed)`);
+            console.log(`📢 Update terkirim: ${version} - ${title}`);
         } catch (e) {
             return interaction.editReply({ content: `❌ Gagal kirim: ${e.message}` });
         }
 
         return interaction.editReply({
-            content: `✅ Update terkirim!\n> **${version}** — ${title}\n> 📦 ${embeds.length} embed (${doTranslate ? '🇮🇩 ID + 🇬🇧 EN' : '🇮🇩 ID saja'}).`
+            content: `✅ Update terkirim!\n> **${version}** — ${title}\n> 📦 1 embed dikirim.`
         });
     }
 
     // ==========================================
-    // /update sendmulti — MULTI EMBED + AUTO TRANSLATE
+    // /update sendmulti — MULTI EMBED
     // ==========================================
     if (sub === 'sendmulti') {
         await interaction.deferReply({ ephemeral: true });
@@ -363,7 +302,6 @@ async function handleUpdateInteraction(interaction) {
         const content = interaction.options.getString('content');
         const type = interaction.options.getString('type') || 'improvement';
         const mention = interaction.options.getString('mention') || 'none';
-        const doTranslate = (interaction.options.getString('translate') || 'yes') === 'yes';
 
         const sections = splitContent(content);
 
@@ -382,7 +320,7 @@ async function handleUpdateInteraction(interaction) {
         else if (mention === 'here') mentionText = '@here';
 
         await interaction.editReply({
-            content: `⏳ Mengirim **${sections.length}** section...\n> Auto-translate: **${doTranslate ? 'Ya' : 'Tidak'}**\n> Mohon tunggu...`
+            content: `⏳ Mengirim **${sections.length}** section...\n> Mohon tunggu...`
         });
 
         let sentCount = 0;
@@ -390,42 +328,21 @@ async function handleUpdateInteraction(interaction) {
         try {
             for (let i = 0; i < sections.length; i++) {
                 const sec = sections[i];
-                const idTitle = sec.title || title;
-                const idBody = sec.body;
+                const secTitle = sec.title || title;
 
-                const embeds = [];
-
-                embeds.push(buildUpdateEmbed({
+                const embed = buildUpdateEmbed({
                     version,
-                    title: idTitle,
-                    content: idBody,
+                    title: secTitle,
+                    content: sec.body,
                     type,
                     author: interaction.user.username,
-                    timestamp: Date.now(),
-                    lang: 'id'
-                }));
-
-                if (doTranslate) {
-                    try {
-                        const en = await translateSection({ title: idTitle, body: idBody });
-                        embeds.push(buildUpdateEmbed({
-                            version,
-                            title: en.title,
-                            content: en.body,
-                            type,
-                            author: interaction.user.username,
-                            timestamp: Date.now(),
-                            lang: 'en'
-                        }));
-                    } catch (e) {
-                        console.error(`Translate section ${i + 1} gagal:`, e.message);
-                    }
-                }
+                    timestamp: Date.now()
+                });
 
                 const isFirst = i === 0;
                 await channel.send({
                     content: isFirst ? (mentionText || null) : null,
-                    embeds,
+                    embeds: [embed],
                     allowedMentions: isFirst && mentionText ? { parse: ['everyone'] } : { parse: [] }
                 });
 
@@ -436,7 +353,7 @@ async function handleUpdateInteraction(interaction) {
             db.addUpdateHistory(guildId, version, title, content, type, interaction.user.id);
 
             return interaction.editReply({
-                content: `✅ **Update multi-embed terkirim!**\n> **${version}** — ${title}\n> 📦 **${sentCount}** section (${doTranslate ? 'ID + EN' : 'ID saja'})`
+                content: `✅ **Update multi-embed terkirim!**\n> **${version}** — ${title}\n> 📦 **${sentCount}** section (embed terpisah)`
             });
         } catch (e) {
             return interaction.editReply({ content: `❌ Gagal kirim: ${e.message}` });
@@ -478,7 +395,7 @@ async function handleUpdateInteraction(interaction) {
         const oldTitleRaw = oldEmbed.title || '';
         const oldVersionMatch = oldTitleRaw.match(/—\s*(v[\d.]+)/);
         const oldVersion = oldVersionMatch ? oldVersionMatch[1] : 'v?.?';
-        const oldTypeKey = Object.keys(UPDATE_TYPES).find(k => oldTitleRaw.includes(UPDATE_TYPES[k].labelID)) || 'improvement';
+        const oldTypeKey = Object.keys(UPDATE_TYPES).find(k => oldTitleRaw.includes(UPDATE_TYPES[k].label)) || 'improvement';
         const oldDesc = oldEmbed.description || '';
         const oldTitleMatch = oldDesc.match(/^###\s+(.+)/m);
         const oldTitle = oldTitleMatch ? oldTitleMatch[1].trim() : 'Update';
@@ -495,34 +412,11 @@ async function handleUpdateInteraction(interaction) {
             content: finalContent,
             type: finalType,
             author: interaction.user.username,
-            timestamp: Date.now(),
-            lang: 'id'
+            timestamp: Date.now()
         });
 
-        const finalEmbeds = [newEmbed];
-
-        if (oldEmbeds.length >= 2) {
-            try {
-                const [enTitle, enContent] = await Promise.all([
-                    translateToEnglish(finalTitle),
-                    translateToEnglish(finalContent)
-                ]);
-                finalEmbeds.push(buildUpdateEmbed({
-                    version: finalVersion,
-                    title: enTitle || finalTitle,
-                    content: enContent || finalContent,
-                    type: finalType,
-                    author: interaction.user.username,
-                    timestamp: Date.now(),
-                    lang: 'en'
-                }));
-            } catch (e) {
-                console.error('Translate error:', e.message);
-            }
-        }
-
         try {
-            await targetMsg.edit({ embeds: finalEmbeds });
+            await targetMsg.edit({ embeds: [newEmbed] });
         } catch (e) {
             return interaction.editReply({ content: `❌ Gagal edit pesan: ${e.message}` });
         }
@@ -634,6 +528,5 @@ module.exports = {
     handleUpdateInteraction,
     buildUpdateEmbed,
     UPDATE_TYPES,
-    splitContent,
-    translateToEnglish
+    splitContent
 };
