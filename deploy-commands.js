@@ -7,6 +7,7 @@ const CLIENT_ID = '1372423272255324212';
 let ADMIN_COMMANDS = [];
 let UTILITY_COMMANDS = [];
 let UPDATE_COMMANDS = [];
+let VOICE_COMMANDS = [];
 
 try {
     const admin = require('./admin');
@@ -26,6 +27,12 @@ try {
     console.log(`✅ update.js loaded — ${UPDATE_COMMANDS.length} commands`);
 } catch (e) { console.error('❌ update.js:', e.message); }
 
+try {
+    const voice = require('./voice');
+    VOICE_COMMANDS = voice.VOICE_COMMANDS || [];
+    console.log(`✅ voice.js loaded — ${VOICE_COMMANDS.length} commands`);
+} catch (e) { console.error('❌ voice.js:', e.message); }
+
 const baseCommands = [
     new SlashCommandBuilder().setName('farming').setDescription('Membuka panel farming').toJSON(),
     new SlashCommandBuilder().setName('event').setDescription('Lihat event').toJSON(),
@@ -44,7 +51,7 @@ const baseCommands = [
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addUserOption(o => o.setName('player').setDescription('Player yang mau direset').setRequired(true)).toJSON(),
 
-    // ===== AFK CHECK =====
+    // AFK CHECK
     new SlashCommandBuilder().setName('afkcheck').setDescription('⏰ Cek online otomatis saat Auto Farm aktif')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .addSubcommand(s => s
@@ -63,7 +70,8 @@ const commands = [
     ...baseCommands,
     ...ADMIN_COMMANDS,
     ...UTILITY_COMMANDS,
-    ...UPDATE_COMMANDS
+    ...UPDATE_COMMANDS,
+    ...VOICE_COMMANDS
 ];
 
 const seen = new Set();
@@ -78,6 +86,7 @@ console.log(`   - Base: ${baseCommands.length}`);
 console.log(`   - Admin: ${ADMIN_COMMANDS.length}`);
 console.log(`   - Utility: ${UTILITY_COMMANDS.length}`);
 console.log(`   - Update: ${UPDATE_COMMANDS.length}`);
+console.log(`   - Voice: ${VOICE_COMMANDS.length}`);
 
 if (duplicates.length > 0) {
     console.error(`\n⚠️ DUPLIKAT COMMAND: ${duplicates.join(', ')}`);
@@ -122,18 +131,6 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
         });
         console.log('='.repeat(60));
         console.log(`📊 Total: ${result.length} command + ${totalSub} subcommand`);
-
-        // Verifikasi penting
-        const upd = result.find(c => c.name === 'update');
-        if (upd) {
-            const subs = (upd.options || []).filter(o => o.type === 1).map(o => o.name);
-            console.log(`\n🔍 /update → [${subs.join(', ')}]`);
-        }
-        const afk = result.find(c => c.name === 'afkcheck');
-        if (afk) {
-            const subs = (afk.options || []).filter(o => o.type === 1).map(o => o.name);
-            console.log(`🔍 /afkcheck → [${subs.join(', ')}]`);
-        }
     } catch (e) {
         console.error('\n❌ GAGAL deploy:', e.code, e.message);
         if (e.code === 50001) console.error('💡 Missing Access — bot belum di-invite / CLIENT_ID salah.');
