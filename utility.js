@@ -95,7 +95,7 @@ const UTILITY_COMMANDS = [
 
     // ===== MISC =====
     new SlashCommandBuilder().setName('ping').setDescription('🏓 Cek latency bot').toJSON(),
-    new SlashCommandBuilder().setName('help').setDescription('❓ Bantuan command — semua command & subcommand').toJSON()
+    new SlashCommandBuilder().setName('help').setDescription('❓ Bantuan command').toJSON()
 ];
 
 // ==========================================
@@ -294,186 +294,164 @@ async function logEvent(guild, type, data) {
 }
 
 // ==========================================
-// BARU — HELP DATA
+// HELP — RINGKAS
 // ==========================================
 const HELP_DATA = [
     {
-        category: '🌾 Farming & Game',
+        emoji: '🌾',
+        name: 'Farming & Game',
         color: '#57F287',
-        commands: [
-            { cmd: '/farming', desc: 'Buka panel farming pribadi (private thread)' },
-            { cmd: '/event', desc: 'Lihat event aktif saat ini' },
-            { cmd: '/customevent', desc: 'Set multiplier Gems & Blocks (Event Manager / Admin)' },
-            { cmd: '/setup', desc: 'Setup panel & leaderboard untuk server ini' },
-            { cmd: '/unsetup', desc: 'Hapus konfigurasi bot untuk server ini' },
-            { cmd: '/resetplayer', desc: 'Reset semua data player (admin)' }
+        cmds: [
+            '/farming — Buka panel farming',
+            '/event — Lihat event aktif',
+            '/customevent — Set multiplier event',
+            '/setup — Setup bot di server',
+            '/unsetup — Hapus config bot',
+            '/resetplayer — Reset data player'
         ]
     },
     {
-        category: '📢 Update / Changelog',
+        emoji: '📢',
+        name: 'Update / Changelog',
         color: '#5865F2',
-        commands: [
-            { cmd: '/update send', desc: 'Kirim 1 update (1 embed)' },
-            { cmd: '/update sendmulti', desc: 'Kirim update multi-embed — pisah pakai "### Judul"' },
-            { cmd: '/update edit', desc: 'Edit update yang sudah dikirim (by message ID)' },
-            { cmd: '/update delete', desc: 'Hapus update + history-nya' },
-            { cmd: '/update reset', desc: 'Hapus semua pesan update lama + history' },
-            { cmd: '/update clearhistory', desc: 'Hapus history saja (pesan tetap)' },
-            { cmd: '/update setchannel', desc: 'Set channel untuk changelog' },
-            { cmd: '/update history', desc: 'Lihat riwayat update' },
-            { cmd: '/update status', desc: 'Lihat config update' }
+        cmds: [
+            '/update send — Kirim 1 update',
+            '/update sendmulti — Update multi-embed',
+            '/update edit — Edit update',
+            '/update delete — Hapus update + history',
+            '/update reset — Reset semua update',
+            '/update clearhistory — Hapus history',
+            '/update setchannel — Set channel update',
+            '/update history — Lihat riwayat',
+            '/update status — Lihat config'
         ]
     },
     {
-        category: '🛡️ Moderasi',
+        emoji: '🛡️',
+        name: 'Moderasi',
         color: '#ED4245',
-        commands: [
-            { cmd: '/kick', desc: 'Kick member dari server' },
-            { cmd: '/ban', desc: 'Ban member (+ hapus pesan 0-7 hari)' },
-            { cmd: '/unban', desc: 'Unban user by ID' },
-            { cmd: '/timeout', desc: 'Timeout member (5m, 1h, 1d, dll)' },
-            { cmd: '/untimeout', desc: 'Hapus timeout member' },
-            { cmd: '/warn add', desc: 'Beri warn ke user' },
-            { cmd: '/warn list', desc: 'Lihat warns user' },
-            { cmd: '/warn clear', desc: 'Hapus semua warn user' },
-            { cmd: '/warn remove', desc: 'Hapus warn by ID' },
-            { cmd: '/warn all', desc: 'Lihat semua warn di server' }
+        cmds: [
+            '/kick — Kick member',
+            '/ban — Ban member',
+            '/unban — Unban user',
+            '/timeout — Timeout member',
+            '/untimeout — Hapus timeout',
+            '/warn add — Warn user',
+            '/warn list — Lihat warn',
+            '/warn clear — Hapus warn',
+            '/warn remove — Hapus warn by ID',
+            '/warn all — Semua warn'
         ]
     },
     {
-        category: '🔒 Channel Management',
+        emoji: '🔒',
+        name: 'Channel Management',
         color: '#E67E22',
-        commands: [
-            { cmd: '/lock', desc: 'Lock channel (tidak bisa kirim pesan)' },
-            { cmd: '/unlock', desc: 'Unlock channel' },
-            { cmd: '/lockview', desc: 'Sembunyikan channel dari semua' },
-            { cmd: '/unlockview', desc: 'Tampilkan channel kembali' },
-            { cmd: '/slowmode', desc: 'Set slowmode channel (detik)' },
-            { cmd: '/clear', desc: 'Hapus pesan (max 100)' }
+        cmds: [
+            '/lock — Lock channel',
+            '/unlock — Unlock channel',
+            '/lockview — Sembunyikan channel',
+            '/unlockview — Tampilkan channel',
+            '/slowmode — Set slowmode',
+            '/clear — Hapus pesan'
         ]
     },
     {
-        category: '🎭 Role Management',
+        emoji: '🎭',
+        name: 'Role Management',
         color: '#9B59B6',
-        commands: [
-            { cmd: '/role create', desc: 'Buat role baru (nama, warna, hoist, mentionable)' },
-            { cmd: '/role delete', desc: 'Hapus role' },
-            { cmd: '/role rename', desc: 'Rename role' },
-            { cmd: '/role color', desc: 'Ubah warna role' },
-            { cmd: '/role give', desc: 'Beri role ke member' },
-            { cmd: '/role remove', desc: 'Hapus role dari member' },
-            { cmd: '/role list', desc: 'List semua role di server' },
-            { cmd: '/role info', desc: 'Info detail role' }
+        cmds: [
+            '/role create — Buat role',
+            '/role delete — Hapus role',
+            '/role rename — Rename role',
+            '/role color — Ubah warna',
+            '/role give — Beri role',
+            '/role remove — Hapus role',
+            '/role list — List role',
+            '/role info — Info role'
         ]
     },
     {
-        category: '👋 Welcome & Autorole',
+        emoji: '👋',
+        name: 'Welcome & Autorole',
         color: '#F1C40F',
-        commands: [
-            { cmd: '/welcome set-channel', desc: 'Set channel welcome' },
-            { cmd: '/welcome set-message', desc: 'Set pesan welcome ({user}, {server}, {membercount})' },
-            { cmd: '/welcome set-color', desc: 'Set warna embed welcome' },
-            { cmd: '/welcome toggle', desc: 'On/off welcome message' },
-            { cmd: '/welcome test', desc: 'Test welcome message' },
-            { cmd: '/welcome status', desc: 'Lihat config welcome' },
-            { cmd: '/autorole set', desc: 'Set role otomatis untuk member baru' },
-            { cmd: '/autorole disable', desc: 'Nonaktifkan autorole' },
-            { cmd: '/autorole status', desc: 'Lihat config autorole' },
-            { cmd: '/autorole apply', desc: 'Beri role ke SEMUA member' },
-            { cmd: '/autorole remove', desc: 'Hapus config autorole' }
+        cmds: [
+            '/welcome set-channel — Set channel welcome',
+            '/welcome set-message — Set pesan welcome',
+            '/welcome set-color — Set warna',
+            '/welcome toggle — On/off welcome',
+            '/welcome test — Test welcome',
+            '/welcome status — Lihat config',
+            '/autorole set — Set autorole',
+            '/autorole disable — Nonaktifkan',
+            '/autorole status — Lihat config',
+            '/autorole apply — Apply ke semua',
+            '/autorole remove — Hapus config'
         ]
     },
     {
-        category: '🏷️ Tag & Reaction Role',
+        emoji: '🏷️',
+        name: 'Tag & Reaction Role',
         color: '#3498DB',
-        commands: [
-            { cmd: '/tag create', desc: 'Buat tag baru' },
-            { cmd: '/tag delete', desc: 'Hapus tag' },
-            { cmd: '/tag list', desc: 'List semua tag' },
-            { cmd: '/tag show', desc: 'Tampilkan tag' },
-            { cmd: '!tagname', desc: 'Trigger tag lewat chat (contoh: !rules)' },
-            { cmd: '/reactionrole add', desc: 'Tambah reaction role ke pesan' },
-            { cmd: '/reactionrole remove', desc: 'Hapus reaction role' },
-            { cmd: '/reactionrole list', desc: 'List semua reaction role' }
+        cmds: [
+            '/tag create — Buat tag',
+            '/tag delete — Hapus tag',
+            '/tag list — List tag',
+            '/tag show — Tampilkan tag',
+            '!tagname — Trigger tag lewat chat',
+            '/reactionrole add — Tambah reaction role',
+            '/reactionrole remove — Hapus reaction role',
+            '/reactionrole list — List reaction role'
         ]
     },
     {
-        category: '📜 Logging, Starboard & Automod',
+        emoji: '📜',
+        name: 'Logging, Starboard & Automod',
         color: '#1ABC9C',
-        commands: [
-            { cmd: '/logging set', desc: 'Set channel log' },
-            { cmd: '/logging toggle', desc: 'On/off logging' },
-            { cmd: '/logging events', desc: 'Pilih event yang di-log (messages, members, mod)' },
-            { cmd: '/logging status', desc: 'Lihat config logging' },
-            { cmd: '/starboard set', desc: 'Setup starboard (channel, emoji, threshold)' },
-            { cmd: '/starboard toggle', desc: 'On/off starboard' },
-            { cmd: '/starboard status', desc: 'Lihat config starboard' },
-            { cmd: '/starboard ignore', desc: 'Ignore channel dari starboard' },
-            { cmd: '/automod toggle', desc: 'On/off automod' },
-            { cmd: '/automod filters', desc: 'Anti-link, anti-invite, anti-spam, anti-caps' },
-            { cmd: '/automod badwords', desc: 'Manage bad words (add/remove/list)' },
-            { cmd: '/automod logchannel', desc: 'Set channel log automod' },
-            { cmd: '/automod exempt', desc: 'Channel/role yang di-ignore automod' },
-            { cmd: '/automod status', desc: 'Lihat config automod' }
+        cmds: [
+            '/logging set — Set channel log',
+            '/logging toggle — On/off logging',
+            '/logging events — Pilih event log',
+            '/logging status — Lihat config',
+            '/starboard set — Setup starboard',
+            '/starboard toggle — On/off starboard',
+            '/starboard status — Lihat config',
+            '/starboard ignore — Ignore channel',
+            '/automod toggle — On/off automod',
+            '/automod filters — Set filter',
+            '/automod badwords — Manage bad words',
+            '/automod logchannel — Set log channel',
+            '/automod exempt — Ignore channel/role',
+            '/automod status — Lihat config'
         ]
     },
     {
-        category: 'ℹ️ Info & Misc',
+        emoji: 'ℹ️',
+        name: 'Info & Misc',
         color: '#95A5A6',
-        commands: [
-            { cmd: '/serverinfo', desc: 'Info lengkap server' },
-            { cmd: '/userinfo', desc: 'Info user (akun, join, roles)' },
-            { cmd: '/ping', desc: 'Cek latency bot' },
-            { cmd: '/help', desc: 'Tampilkan bantuan ini' }
+        cmds: [
+            '/serverinfo — Info server',
+            '/userinfo — Info user',
+            '/ping — Cek latency',
+            '/help — Bantuan ini'
         ]
     }
 ];
 
-// ==========================================
-// BARU — BUILD HELP EMBEDS
-// ==========================================
 function buildHelpEmbeds() {
     const embeds = [];
 
     for (const group of HELP_DATA) {
-        const lines = group.commands.map(c => {
-            const desc = c.desc.length > 100 ? c.desc.substring(0, 97) + '...' : c.desc;
-            return `**${c.cmd}**\n> ${desc}`;
-        });
-
-        // Discord limit: description max 4096 char, jadi pecah kalau perlu
-        const chunks = [];
-        let current = '';
-        for (const line of lines) {
-            if ((current + '\n\n' + line).length > 3800) {
-                chunks.push(current.trim());
-                current = line;
-            } else {
-                current = current ? current + '\n\n' + line : line;
-            }
-        }
-        if (current) chunks.push(current.trim());
-
-        for (let i = 0; i < chunks.length; i++) {
-            const title = chunks.length > 1
-                ? `${group.category} (${i + 1}/${chunks.length})`
-                : group.category;
-
-            embeds.push(
-                new EmbedBuilder()
-                    .setColor(group.color)
-                    .setTitle(title)
-                    .setDescription(chunks[i])
-            );
-        }
+        embeds.push(
+            new EmbedBuilder()
+                .setColor(group.color)
+                .setTitle(`${group.emoji} ${group.name}`)
+                .setDescription(group.cmds.join('\n'))
+        );
     }
 
-    // Tambah footer di embed terakhir
     if (embeds.length > 0) {
-        embeds[embeds.length - 1].setFooter({
-            text: 'GrowExs Bot • Ketik /help untuk lihat lagi'
-        });
-        embeds[embeds.length - 1].setTimestamp();
+        embeds[embeds.length - 1].setFooter({ text: 'GrowExs Bot' });
     }
 
     return embeds;
@@ -495,22 +473,15 @@ async function handleUtilityInteraction(interaction) {
             return interaction.reply({ content: `🏓 Pong! WebSocket: **${interaction.client.ws.ping}ms**`, ephemeral: true });
         }
 
-        // ==========================================
-        // BARU — /help tampilkan semua command & subcommand
-        // ==========================================
+        // ===== HELP — RINGKAS =====
         if (cmd === 'help') {
             const embeds = buildHelpEmbeds();
 
-            // Discord max 10 embed per pesan
-            // Kalau lebih dari 10, kirim dalam beberapa pesan
             if (embeds.length <= 10) {
                 return interaction.reply({ embeds, ephemeral: true });
             }
 
-            // Kirim batch pertama (10 embed)
             await interaction.reply({ embeds: embeds.slice(0, 10), ephemeral: true });
-
-            // Kirim sisanya sebagai followUp
             for (let i = 10; i < embeds.length; i += 10) {
                 await interaction.followUp({
                     embeds: embeds.slice(i, i + 10),
