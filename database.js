@@ -5,7 +5,7 @@ const db = new Database(path.join(__dirname, 'growexs.db'));
 db.pragma('journal_mode = WAL');
 
 // ==========================================
-// TABEL USERS (farming)
+// TABEL USERS
 // ==========================================
 db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -42,9 +42,6 @@ db.exec(`
     )
 `);
 
-// ==========================================
-// TABEL GUILD CONFIG
-// ==========================================
 db.exec(`
     CREATE TABLE IF NOT EXISTS guild_config (
         guildId TEXT PRIMARY KEY,
@@ -54,9 +51,6 @@ db.exec(`
     )
 `);
 
-// ==========================================
-// TABEL WELCOME
-// ==========================================
 db.exec(`
     CREATE TABLE IF NOT EXISTS welcome_config (
         guildId TEXT PRIMARY KEY,
@@ -67,9 +61,6 @@ db.exec(`
     )
 `);
 
-// ==========================================
-// TABEL AUTOROLE
-// ==========================================
 db.exec(`
     CREATE TABLE IF NOT EXISTS autorole_config (
         guildId TEXT PRIMARY KEY,
@@ -78,9 +69,6 @@ db.exec(`
     )
 `);
 
-// ==========================================
-// TABEL WARNS
-// ==========================================
 db.exec(`
     CREATE TABLE IF NOT EXISTS warns (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,9 +80,6 @@ db.exec(`
     )
 `);
 
-// ==========================================
-// TABEL TAGS
-// ==========================================
 db.exec(`
     CREATE TABLE IF NOT EXISTS tags (
         guildId TEXT,
@@ -107,9 +92,6 @@ db.exec(`
     )
 `);
 
-// ==========================================
-// TABEL REACTION ROLES
-// ==========================================
 db.exec(`
     CREATE TABLE IF NOT EXISTS reaction_roles (
         messageId TEXT,
@@ -121,9 +103,6 @@ db.exec(`
     )
 `);
 
-// ==========================================
-// TABEL LOGGING
-// ==========================================
 db.exec(`
     CREATE TABLE IF NOT EXISTS logging_config (
         guildId TEXT PRIMARY KEY,
@@ -136,9 +115,6 @@ db.exec(`
     )
 `);
 
-// ==========================================
-// TABEL STARBOARD
-// ==========================================
 db.exec(`
     CREATE TABLE IF NOT EXISTS starboard_config (
         guildId TEXT PRIMARY KEY,
@@ -159,9 +135,6 @@ db.exec(`
     )
 `);
 
-// ==========================================
-// TABEL AUTOMOD
-// ==========================================
 db.exec(`
     CREATE TABLE IF NOT EXISTS automod_config (
         guildId TEXT PRIMARY KEY,
@@ -177,9 +150,6 @@ db.exec(`
     )
 `);
 
-// ==========================================
-// TABEL USER THREADS (anti eksploitasi)
-// ==========================================
 db.exec(`
     CREATE TABLE IF NOT EXISTS user_threads (
         guildId TEXT,
@@ -191,10 +161,33 @@ db.exec(`
     )
 `);
 
+// ==========================================
+// 📢 UPDATE CONFIG & HISTORY
+// ==========================================
+db.exec(`
+    CREATE TABLE IF NOT EXISTS update_config (
+        guildId TEXT PRIMARY KEY,
+        channelId TEXT
+    )
+`);
+
+db.exec(`
+    CREATE TABLE IF NOT EXISTS update_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guildId TEXT,
+        version TEXT,
+        title TEXT,
+        content TEXT,
+        type TEXT,
+        authorId TEXT,
+        timestamp INTEGER
+    )
+`);
+
 console.log('✅ Database SQLite siap!');
 
 // ==========================================
-// USER (FARMING) — CRUD
+// USER CRUD
 // ==========================================
 function rowToUser(row) {
     if (!row) return null;
@@ -273,9 +266,6 @@ function resetUser(userId) {
     return true;
 }
 
-// ==========================================
-// GUILD CONFIG
-// ==========================================
 function getGuildConfig(g) { return db.prepare('SELECT * FROM guild_config WHERE guildId = ?').get(g) || null; }
 function setGuildConfig(g, p, l) {
     db.prepare(`INSERT INTO guild_config (guildId, panelChannelId, leaderboardChannelId) VALUES (?, ?, ?)
@@ -285,9 +275,6 @@ function updateLeaderboardMessage(g, m) { db.prepare('UPDATE guild_config SET le
 function getAllGuildConfigs() { return db.prepare('SELECT * FROM guild_config').all(); }
 function removeGuildConfig(g) { db.prepare('DELETE FROM guild_config WHERE guildId = ?').run(g); }
 
-// ==========================================
-// WELCOME
-// ==========================================
 function getWelcomeConfig(g) { return db.prepare('SELECT * FROM welcome_config WHERE guildId = ?').get(g) || null; }
 function setWelcomeConfig(g, d) {
     db.prepare(`INSERT INTO welcome_config (guildId, channelId, message, enabled, embedColor) VALUES (?, ?, ?, ?, ?)
@@ -295,9 +282,6 @@ function setWelcomeConfig(g, d) {
         .run(g, d.channelId || null, d.message || 'Welcome {user}', d.enabled ? 1 : 0, d.embedColor || '#57F287');
 }
 
-// ==========================================
-// AUTOROLE
-// ==========================================
 function getAutoRoleConfig(g) { return db.prepare('SELECT * FROM autorole_config WHERE guildId = ?').get(g) || null; }
 function setAutoRoleConfig(g, r, e) {
     db.prepare(`INSERT INTO autorole_config (guildId, roleId, enabled) VALUES (?, ?, ?)
@@ -305,9 +289,6 @@ function setAutoRoleConfig(g, r, e) {
 }
 function removeAutoRoleConfig(g) { db.prepare('DELETE FROM autorole_config WHERE guildId = ?').run(g); }
 
-// ==========================================
-// WARNS
-// ==========================================
 function addWarn(g, u, m, r) {
     const res = db.prepare('INSERT INTO warns (guildId, userId, modId, reason, timestamp) VALUES (?, ?, ?, ?, ?)').run(g, u, m, r, Date.now());
     return res.lastInsertRowid;
@@ -317,9 +298,6 @@ function getAllWarns(g) { return db.prepare('SELECT * FROM warns WHERE guildId =
 function removeWarn(id) { db.prepare('DELETE FROM warns WHERE id = ?').run(id); }
 function clearWarns(g, u) { db.prepare('DELETE FROM warns WHERE guildId = ? AND userId = ?').run(g, u); }
 
-// ==========================================
-// TAGS
-// ==========================================
 function createTag(g, name, content, authorId) {
     try {
         db.prepare('INSERT INTO tags (guildId, name, content, authorId, createdAt) VALUES (?, ?, ?, ?, ?)').run(g, name.toLowerCase(), content, authorId, Date.now());
@@ -331,9 +309,6 @@ function deleteTag(g, name) { db.prepare('DELETE FROM tags WHERE guildId = ? AND
 function listTags(g) { return db.prepare('SELECT * FROM tags WHERE guildId = ? ORDER BY name ASC').all(g); }
 function incrementTagUse(g, name) { db.prepare('UPDATE tags SET uses = uses + 1 WHERE guildId = ? AND name = ?').run(g, name.toLowerCase()); }
 
-// ==========================================
-// REACTION ROLES
-// ==========================================
 function addReactionRole(messageId, guildId, channelId, emoji, roleId) {
     db.prepare(`INSERT INTO reaction_roles (messageId, guildId, channelId, emoji, roleId) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(messageId, emoji) DO UPDATE SET roleId = excluded.roleId`).run(messageId, guildId, channelId, emoji, roleId);
@@ -343,9 +318,6 @@ function getReactionRolesForMessage(messageId) { return db.prepare('SELECT * FRO
 function getReactionRole(messageId, emoji) { return db.prepare('SELECT * FROM reaction_roles WHERE messageId = ? AND emoji = ?').get(messageId, emoji) || null; }
 function listReactionRoles(g) { return db.prepare('SELECT * FROM reaction_roles WHERE guildId = ?').all(g); }
 
-// ==========================================
-// LOGGING
-// ==========================================
 function getLoggingConfig(g) {
     let c = db.prepare('SELECT * FROM logging_config WHERE guildId = ?').get(g);
     if (!c) {
@@ -362,9 +334,6 @@ function setLoggingConfig(g, d) {
         .run(g, d.channelId || null, d.logMessages ? 1 : 0, d.logMembers ? 1 : 0, d.logMod ? 1 : 0, d.logVoice ? 1 : 0, d.enabled ? 1 : 0);
 }
 
-// ==========================================
-// STARBOARD
-// ==========================================
 function getStarboardConfig(g) {
     let c = db.prepare('SELECT * FROM starboard_config WHERE guildId = ?').get(g);
     if (!c) {
@@ -389,9 +358,6 @@ function saveStarboardMessage(origId, sbId, guildId, count) {
 function updateStarCount(origId, count) { db.prepare('UPDATE starboard_messages SET starCount = ? WHERE originalMessageId = ?').run(count, origId); }
 function deleteStarboardMessage(origId) { db.prepare('DELETE FROM starboard_messages WHERE originalMessageId = ?').run(origId); }
 
-// ==========================================
-// AUTOMOD
-// ==========================================
 function getAutomodConfig(g) {
     let c = db.prepare('SELECT * FROM automod_config WHERE guildId = ?').get(g);
     if (!c) {
@@ -410,19 +376,13 @@ function setAutomodConfig(g, d) {
             d.badWords || '', d.logChannelId || null, d.exemptChannels || '', d.exemptRoles || '');
 }
 
-// ==========================================
-// USER THREADS
-// ==========================================
 function getUserThread(guildId, userId) {
     return db.prepare('SELECT * FROM user_threads WHERE guildId = ? AND userId = ?').get(guildId, userId) || null;
 }
 function setUserThread(guildId, userId, threadId, parentChannelId) {
     db.prepare(`INSERT INTO user_threads (guildId, userId, threadId, parentChannelId, createdAt)
         VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(guildId, userId) DO UPDATE SET 
-            threadId = excluded.threadId, 
-            parentChannelId = excluded.parentChannelId, 
-            createdAt = excluded.createdAt`)
+        ON CONFLICT(guildId, userId) DO UPDATE SET threadId = excluded.threadId, parentChannelId = excluded.parentChannelId, createdAt = excluded.createdAt`)
         .run(guildId, userId, threadId, parentChannelId, Date.now());
 }
 function removeUserThread(guildId, userId) {
@@ -430,8 +390,25 @@ function removeUserThread(guildId, userId) {
 }
 
 // ==========================================
-// EXPORTS
+// UPDATE CONFIG & HISTORY
 // ==========================================
+function getUpdateConfig(guildId) {
+    return db.prepare('SELECT * FROM update_config WHERE guildId = ?').get(guildId) || null;
+}
+function setUpdateConfig(guildId, data) {
+    db.prepare(`INSERT INTO update_config (guildId, channelId)
+        VALUES (?, ?)
+        ON CONFLICT(guildId) DO UPDATE SET channelId = excluded.channelId`)
+        .run(guildId, data.channelId || null);
+}
+function addUpdateHistory(guildId, version, title, content, type, authorId) {
+    db.prepare(`INSERT INTO update_history (guildId, version, title, content, type, authorId, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`).run(guildId, version, title, content, type, authorId, Date.now());
+}
+function getUpdateHistory(guildId, limit = 10) {
+    return db.prepare('SELECT * FROM update_history WHERE guildId = ? ORDER BY timestamp DESC LIMIT ?').all(guildId, limit);
+}
+
 module.exports = {
     connectDB, getUser, saveUser, getAllUsers, resetUser,
     getGuildConfig, setGuildConfig, updateLeaderboardMessage, getAllGuildConfigs, removeGuildConfig,
@@ -443,5 +420,7 @@ module.exports = {
     getLoggingConfig, setLoggingConfig,
     getStarboardConfig, setStarboardConfig, getStarboardMessage, saveStarboardMessage, updateStarCount, deleteStarboardMessage,
     getAutomodConfig, setAutomodConfig,
-    getUserThread, setUserThread, removeUserThread
+    getUserThread, setUserThread, removeUserThread,
+    getUpdateConfig, setUpdateConfig,
+    addUpdateHistory, getUpdateHistory
 };
