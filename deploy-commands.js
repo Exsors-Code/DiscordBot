@@ -9,7 +9,7 @@ let UTILITY_COMMANDS = [];
 let UPDATE_COMMANDS = [];
 
 // ==========================================
-// LOAD MODULES (dengan validasi)
+// LOAD MODULES
 // ==========================================
 try {
     const admin = require('./admin');
@@ -27,18 +27,6 @@ try {
     const update = require('./update');
     UPDATE_COMMANDS = update.UPDATE_COMMANDS || [];
     console.log(`✅ update.js loaded — ${UPDATE_COMMANDS.length} commands`);
-
-    // ===== BARU — validasi subcommand sendmulti =====
-    const updateCmd = UPDATE_COMMANDS.find(c => c.name === 'update');
-    if (updateCmd) {
-        const subs = (updateCmd.options || []).filter(o => o.type === 1).map(o => o.name);
-        console.log(`   └─ Subcommands: ${subs.join(', ')}`);
-        if (subs.includes('sendmulti')) {
-            console.log(`   ✅ /update sendmulti TERDETEKSI`);
-        } else {
-            console.warn(`   ⚠️ /update sendmulti TIDAK ditemukan! Cek update.js`);
-        }
-    }
 } catch (e) { console.error('❌ update.js:', e.message); }
 
 // ==========================================
@@ -98,6 +86,39 @@ if (duplicates.length > 0) {
 }
 
 // ==========================================
+// HELPER — TAMPILKAN SEMUA COMMAND + SUBCOMMAND + GROUP
+// ==========================================
+function printCommandTree(cmd) {
+    const subs = (cmd.options || []).filter(o => o.type === 1);   // SUB_COMMAND
+    const groups = (cmd.options || []).filter(o => o.type === 2); // SUB_COMMAND_GROUP
+
+    // Command tanpa subcommand & tanpa group
+    if (subs.length === 0 && groups.length === 0) {
+        console.log(`   /${cmd.name}`);
+        return;
+    }
+
+    console.log(`   /${cmd.name}`);
+
+    // Kalau ada subcommand group
+    for (const g of groups) {
+        const gSubs = (g.options || []).filter(o => o.type === 1);
+        console.log(`     📁 ${g.name}/`);
+        for (const gs of gSubs) {
+            console.log(`        └─ ${gs.name}`);
+        }
+    }
+
+    // Subcommand langsung
+    for (let i = 0; i < subs.length; i++) {
+        const s = subs[i];
+        const isLast = i === subs.length - 1;
+        const prefix = isLast ? '└─' : '├─';
+        console.log(`     ${prefix} ${s.name}`);
+    }
+}
+
+// ==========================================
 // DEPLOY
 // ==========================================
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -111,28 +132,109 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
         );
         console.log(`\n✅ BERHASIL! ${result.length} commands registered.`);
 
-        // ===== Tampilkan daftar command =====
-        console.log('\n📋 Daftar command:');
+        // ==========================================
+        // TAMPILKAN SEMUA COMMAND + SUBCOMMAND
+        // ==========================================
+        console.log('\n📋 DAFTAR LENGKAP COMMAND:');
+        console.log('='.repeat(60));
+
         result.sort((a, b) => a.name.localeCompare(b.name));
+
+        let totalSub = 0;
+        let totalGroup = 0;
+
         result.forEach(c => {
-            const subs = (c.options || []).filter(o => o.type === 1).map(o => o.name);
-            if (subs.length > 0) {
-                console.log(`   /${c.name} → [${subs.join(', ')}]`);
-            } else {
-                console.log(`   /${c.name}`);
-            }
+            printCommandTree(c);
+
+            const subs = (c.options || []).filter(o => o.type === 1);
+            const groups = (c.options || []).filter(o => o.type === 2);
+
+            totalSub += subs.length;
+            totalGroup += groups.length;
+
+            groups.forEach(g => {
+                totalSub += (g.options || []).filter(o => o.type === 1).length;
+            });
         });
 
-        // ===== Cek khusus /update =====
+        console.log('='.repeat(60));
+        console.log(`📊 Total: ${result.length} command utama + ${totalSub} subcommand + ${totalGroup} group`);
+
+        // ==========================================
+        // VERIFIKASI KHUSUS
+        // ==========================================
+        console.log('\n🔍 VERIFIKASI PENTING:');
+
+        // Cek /update sendmulti
         const upd = result.find(c => c.name === 'update');
         if (upd) {
             const subs = (upd.options || []).filter(o => o.type === 1).map(o => o.name);
-            console.log(`\n🔍 /update subcommands: ${subs.join(', ')}`);
-            if (subs.includes('sendmulti')) {
-                console.log(`   ✅ sendmulti AKTIF`);
-            } else {
-                console.log(`   ❌ sendmulti TIDAK ADA — cek update.js`);
-            }
+            const hasSendMulti = subs.includes('sendmulti');
+            console.log(`   /update → [${subs.join(', ')}]`);
+            console.log(`   ${hasSendMulti ? '✅' : '❌'} sendmulti ${hasSendMulti ? 'AKTIF' : 'TIDAK ADA'}`);
+        }
+
+        // Cek /role subcommand
+        const role = result.find(c => c.name === 'role');
+        if (role) {
+            const subs = (role.options || []).filter(o => o.type === 1).map(o => o.name);
+            console.log(`   /role → [${subs.join(', ')}]`);
+        }
+
+        // Cek /automod subcommand
+        const auto = result.find(c => c.name === 'automod');
+        if (auto) {
+            const subs = (auto.options || []).filter(o => o.type === 1).map(o => o.name);
+            console.log(`   /automod → [${subs.join(', ')}]`);
+        }
+
+        // Cek /welcome subcommand
+        const welcome = result.find(c => c.name === 'welcome');
+        if (welcome) {
+            const subs = (welcome.options || []).filter(o => o.type === 1).map(o => o.name);
+            console.log(`   /welcome → [${subs.join(', ')}]`);
+        }
+
+        // Cek /tag subcommand
+        const tag = result.find(c => c.name === 'tag');
+        if (tag) {
+            const subs = (tag.options || []).filter(o => o.type === 1).map(o => o.name);
+            console.log(`   /tag → [${subs.join(', ')}]`);
+        }
+
+        // Cek /warn subcommand
+        const warn = result.find(c => c.name === 'warn');
+        if (warn) {
+            const subs = (warn.options || []).filter(o => o.type === 1).map(o => o.name);
+            console.log(`   /warn → [${subs.join(', ')}]`);
+        }
+
+        // Cek /logging subcommand
+        const log = result.find(c => c.name === 'logging');
+        if (log) {
+            const subs = (log.options || []).filter(o => o.type === 1).map(o => o.name);
+            console.log(`   /logging → [${subs.join(', ')}]`);
+        }
+
+        // Cek /starboard subcommand
+        const star = result.find(c => c.name === 'starboard');
+        if (star) {
+            const subs = (star.options || []).filter(o => o.type === 1).map(o => o.name);
+            console.log(`   /starboard → [${subs.join(', ')}]`);
+        }
+
+        // Cek /reactionrole subcommand
+        const rr = result.find(c => c.name === 'reactionrole');
+        if (rr) {
+            const subs = (rr.options || []).filter(o => o.type === 1).map(o => o.name);
+            console.log(`   /reactionrole → [${subs.join(', ')}]`);
+        }
+
+        // Cek /autorole subcommand
+        const ar = result.find(c => c.name === 'autorole');
+        if (ar) {
+            const subs = (ar.options || []).filter(o => o.type === 1).map(o => o.name);
+            console.log(`   /autorole → [${subs.join(', ')}]`);
         }
     } catch (e) {
         console.error('\n❌ GAGAL deploy:', e.code, e.message);
