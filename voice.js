@@ -31,7 +31,7 @@ const VOICE_COMMANDS = [
 // ==========================================
 // STATE (in-memory)
 // ==========================================
-const activeVoices = new Map(); // channelId -> { ownerId, guildId, panelChannelId, panelMessageId, locked, userLimit, emptyTimer, categoryId }
+const activeVoices = new Map();
 
 function getVoiceByOwner(userId) {
     for (const [cid, d] of activeVoices) if (d.ownerId === userId) return { channelId: cid, ...d };
@@ -50,7 +50,6 @@ function getVoiceByPanelMessage(messageId) {
 // HELPER — CARI / BIKIN CATEGORY
 // ==========================================
 async function resolveCategory(guild, selectedCategory, botMember) {
-    // 1. Kalau user pilih category, pakai itu
     if (selectedCategory) {
         const perms = selectedCategory.permissionsFor(botMember);
         if (!perms || !perms.has(PermissionFlagsBits.ManageChannels)) {
@@ -59,12 +58,10 @@ async function resolveCategory(guild, selectedCategory, botMember) {
         return { category: selectedCategory };
     }
 
-    // 2. Cari category bernama DEFAULT_CATEGORY_NAME
     let category = guild.channels.cache.find(
         c => c.type === ChannelType.GuildCategory && c.name === DEFAULT_CATEGORY_NAME
     );
 
-    // 3. Kalau tidak ada, bikin baru
     if (!category) {
         try {
             category = await guild.channels.create({
@@ -274,6 +271,63 @@ async function handleMakeVoice(interaction) {
 // BUTTON HANDLER
 // ==========================================
 async function handleVoiceButton(interaction) {
+    const id = interaction.customId;
+
+    // ==========================================
+    // FIX — Handle confirm/cancel delete DULU
+    // Tombol ini di pesan ephemeral, bukan panel.
+    // Jadi cari voice by OWNER, bukan by panel message.
+    // ==========================================
+    if (id === 'vc_confirm_delete' || id === 'vc_cancel_delete') {
+        const voice = getVoiceByOwner(interaction.user.id);
+        if (!voice) {
+            return interaction.update({ content: '❌ Kamu tidak punya voice aktif.', components: [] });
+        }
+
+        if (id === 'vc_cancel_delete') {
+            return interaction.update({ content: '❌ Dibatalkan.', components: [] });
+        }
+
+        // Confirm delete
+        const vc = await interaction.guild.channels.fetch(voice.channelId).catch(() => null);
+        if (!vc) {
+            activeVoices.delete(voice.channelId);
+            await markPanelDeleted(interaction.client, voice, 'Voice sudah tidak ada.');
+            return interaction.update({ content: '❌ Voice sudah tidak ada.', components: [] });
+        }
+
+        // Batalkan empty timer kalau ada
+        if (voice.emptyTimer) {
+            clearTimeout(voice.emptyTimer);
+            voice.emptyTimer = null;
+        }
+
+        // Hapus dari state dulu
+        activeVoices.delete(voice.channelId);
+
+        // Hapus channel
+        let deleted = false;
+        try {
+            await vc.delete('Owner delete private voice');
+            deleted = true;
+        } catch (e) {
+            console.error('❌ Gagal hapus voice:', e.message);
+            return interaction.update({
+                content: `❌ Gagal hapus voice: \`${e.message}\`\n> Bot mungkin tidak punya izin **Manage Channels**.`,
+                components: []
+            });
+        }
+
+        // Update panel jadi "dihapus"
+        await markPanelDeleted(interaction.client, voice, '🗑️ Voice dihapus oleh owner.');
+
+        console.log(`🔊 [Voice] ${voice.channelId} dihapus oleh owner ${interaction.user.username}`);
+        return interaction.update({ content: '✅ Voice berhasil dihapus.', components: [] });
+    }
+
+    // ==========================================
+    // Untuk tombol lain, baru cari panel
+    // ==========================================
     const data = getVoiceByPanelMessage(interaction.message.id);
     if (!data) {
         return interaction.reply({ content: '❌ Panel sudah tidak aktif. Buat ulang dengan `/makevoice`.', ephemeral: true });
@@ -288,8 +342,6 @@ async function handleVoiceButton(interaction) {
         await markPanelDeleted(interaction.client, data, 'Voice sudah tidak ada.');
         return interaction.reply({ content: '❌ Voice sudah tidak ada.', ephemeral: true });
     }
-
-    const id = interaction.customId;
 
     // LOCK / UNLOCK
     if (id === 'vc_lock') {
@@ -307,7 +359,7 @@ async function handleVoiceButton(interaction) {
         return;
     }
 
-    // DELETE (konfirmasi dulu)
+    // DELETE (tampilkan konfirmasi)
     if (id === 'vc_delete') {
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('vc_confirm_delete').setLabel('✅ Ya, Hapus').setStyle(ButtonStyle.Danger),
@@ -394,18 +446,6 @@ async function handleVoiceButton(interaction) {
         await interaction.deferUpdate().catch(() => {});
         await updatePanel(interaction.client, data.channelId);
         return;
-    }
-
-    // CONFIRM DELETE
-    if (id === 'vc_confirm_delete') {
-        if (data.emptyTimer) { clearTimeout(data.emptyTimer); data.emptyTimer = null; }
-        activeVoices.delete(data.channelId);
-        try { await vc.delete('Owner delete private voice'); } catch {}
-        await markPanelDeleted(interaction.client, data, '🗑️ Voice dihapus oleh owner.');
-        return interaction.update({ content: '✅ Voice dihapus.', components: [] });
-    }
-    if (id === 'vc_cancel_delete') {
-        return interaction.update({ content: '❌ Dibatalkan.', components: [] });
     }
 }
 
