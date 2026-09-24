@@ -167,9 +167,18 @@ db.exec(`
 db.exec(`
     CREATE TABLE IF NOT EXISTS update_config (
         guildId TEXT PRIMARY KEY,
-        channelId TEXT
+        channelId TEXT,
+        changelogMessageId TEXT
     )
 `);
+
+// Migration: tambah kolom changelogMessageId kalau belum ada
+try {
+    db.exec(`ALTER TABLE update_config ADD COLUMN changelogMessageId TEXT`);
+    console.log('✅ Migration: kolom changelogMessageId ditambahkan');
+} catch (e) {
+    // Kolom sudah ada, skip
+}
 
 db.exec(`
     CREATE TABLE IF NOT EXISTS update_history (
@@ -396,10 +405,13 @@ function getUpdateConfig(guildId) {
     return db.prepare('SELECT * FROM update_config WHERE guildId = ?').get(guildId) || null;
 }
 function setUpdateConfig(guildId, data) {
-    db.prepare(`INSERT INTO update_config (guildId, channelId)
-        VALUES (?, ?)
-        ON CONFLICT(guildId) DO UPDATE SET channelId = excluded.channelId`)
-        .run(guildId, data.channelId || null);
+    db.prepare(`INSERT INTO update_config (guildId, channelId, changelogMessageId)
+        VALUES (?, ?, ?)
+        ON CONFLICT(guildId) DO UPDATE SET channelId = excluded.channelId, changelogMessageId = COALESCE(excluded.changelogMessageId, update_config.changelogMessageId)`)
+        .run(guildId, data.channelId || null, data.changelogMessageId || null);
+}
+function setChangelogMessageId(guildId, messageId) {
+    db.prepare(`UPDATE update_config SET changelogMessageId = ? WHERE guildId = ?`).run(messageId, guildId);
 }
 function addUpdateHistory(guildId, version, title, content, type, authorId) {
     db.prepare(`INSERT INTO update_history (guildId, version, title, content, type, authorId, timestamp)
@@ -421,6 +433,6 @@ module.exports = {
     getStarboardConfig, setStarboardConfig, getStarboardMessage, saveStarboardMessage, updateStarCount, deleteStarboardMessage,
     getAutomodConfig, setAutomodConfig,
     getUserThread, setUserThread, removeUserThread,
-    getUpdateConfig, setUpdateConfig,
+    getUpdateConfig, setUpdateConfig, setChangelogMessageId,
     addUpdateHistory, getUpdateHistory
 };
