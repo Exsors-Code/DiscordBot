@@ -59,7 +59,6 @@ const EMOJI = {
     rayman:   '<:rayman:1552901389120704623>',
     wl:       '<:wl:1552901434834550824>',
     gray:     '<:gray:1552905480815378552>',
-    // Unicode fallback
     sand:     '🟨',
     gravel:   '🪨',
     grass:    '🌿',
@@ -86,7 +85,8 @@ const EDIT_THROTTLE_MS = 3000;
 const INTERACTION_LOCK_MS = 1500;
 const MEMBER_CACHE_TTL = 5 * 60 * 1000;
 
-// ===== ACTION LOCK (anti-dupe) =====
+const WL_TO_GEMS = 2000; // 1 WL = 2.000 gems
+
 const actionLocks = new Set();
 function lockUser(userId, ms = 1500) {
     if (actionLocks.has(userId)) return false;
@@ -112,10 +112,13 @@ function getAutoInterval(ud) {
     }
     return interval;
 }
+
+// ===== FORMULA XP LEVEL (×5 lebih susah) =====
 function getMaxXpForLevel(L) {
-    const xp = (17*L*L*L + 2433*L*L + 6328*L - 1908) / 3;
-    return Math.max(1, Math.floor(xp));
+    const base = (17*L*L*L + 2433*L*L + 6328*L - 1908) / 3;
+    return Math.max(1, Math.floor(base * 5));
 }
+
 function getSkillUpgradeCost(lvl) { return Math.min(5, 1 + Math.floor(lvl / 2)); }
 
 // ==========================================
@@ -129,75 +132,53 @@ const SHOP_TOOLS = {
 };
 
 // ==========================================
-// 🪨 BLOCKS — 16 tier (semua untung ~20%)
+// 🪨 BLOCKS — harga pakai WL
 // ==========================================
-// Tier bawah POG (murah, buat newbie):
+// Low tier (di bawah POG)
 const BLOCKS_LOW = {
-    dirt:     { name: 'Dirt',     price: 0,    gemsMin: 1,    gemsMax: 5,      xpMin: 1,    xpMax: 5,      emoji: EMOJI.dirt,     unlimited: true },
-    sand:     { name: 'Sand',     price: 50,   gemsMin: 60,   gemsMax: 80,     xpMin: 30,   xpMax: 40,     emoji: EMOJI.sand },
-    gravel:   { name: 'Gravel',   price: 100,  gemsMin: 120,  gemsMax: 160,    xpMin: 60,   xpMax: 80,     emoji: EMOJI.gravel },
-    grass:    { name: 'Grass',    price: 200,  gemsMin: 240,  gemsMax: 310,    xpMin: 120,  xpMax: 155,    emoji: EMOJI.grass },
-    clay:     { name: 'Clay',     price: 400,  gemsMin: 480,  gemsMax: 620,    xpMin: 240,  xpMax: 310,    emoji: EMOJI.clay },
-    stone:    { name: 'Stone',    price: 750,  gemsMin: 900,  gemsMax: 1150,   xpMin: 450,  xpMax: 575,    emoji: EMOJI.stone },
-    iron:     { name: 'Iron',     price: 1200, gemsMin: 1440, gemsMax: 1860,   xpMin: 720,  xpMax: 930,    emoji: EMOJI.iron },
-    gold:     { name: 'Gold',     price: 1800, gemsMin: 2160, gemsMax: 2790,   xpMin: 1080, xpMax: 1395,   emoji: EMOJI.gold }
+    dirt:   { name: 'Dirt',   priceWL: 0,     gemsMin: 1,      gemsMax: 5,       xpMin: 1,       xpMax: 5,       emoji: EMOJI.dirt, unlimited: true },
+    sand:   { name: 'Sand',   priceWL: 0.05,  gemsMin: 105,    gemsMax: 110,     xpMin: 21,      xpMax: 22,      emoji: EMOJI.sand },
+    gravel: { name: 'Gravel', priceWL: 0.1,   gemsMin: 210,    gemsMax: 220,     xpMin: 42,      xpMax: 44,      emoji: EMOJI.gravel },
+    grass:  { name: 'Grass',  priceWL: 0.25,  gemsMin: 525,    gemsMax: 550,     xpMin: 105,     xpMax: 110,     emoji: EMOJI.grass },
+    clay:   { name: 'Clay',   priceWL: 0.4,   gemsMin: 840,    gemsMax: 880,     xpMin: 168,     xpMax: 176,     emoji: EMOJI.clay },
+    stone:  { name: 'Stone',  priceWL: 0.5,   gemsMin: 1050,   gemsMax: 1100,    xpMin: 210,     xpMax: 220,     emoji: EMOJI.stone },
+    iron:   { name: 'Iron',   priceWL: 0.75,  gemsMin: 1575,   gemsMax: 1650,    xpMin: 315,     xpMax: 330,     emoji: EMOJI.iron },
+    gold:   { name: 'Gold',   priceWL: 1,     gemsMin: 2100,   gemsMax: 2200,    xpMin: 420,     xpMax: 440,     emoji: EMOJI.gold }
 };
 
-// POG = 1 WL per block
+// POG (1 WL per block)
 const BLOCK_POG = {
-    pog: { name: "Pot O' Gems", price: 2000, gemsMin: 2400, gemsMax: 3100, xpMin: 1200, xpMax: 1550, emoji: EMOJI.pog }
+    pog: { name: "Pot O' Gems", priceWL: 2, gemsMin: 4200, gemsMax: 4400, xpMin: 840, xpMax: 880, emoji: EMOJI.pog }
 };
 
-// Tier atas POG (mahal, high-tier):
+// High tier (di atas POG)
 const BLOCKS_HIGH = {
-    emerald:   { name: 'Emerald',   price: 5000,     gemsMin: 6000,      gemsMax: 7750,      xpMin: 3000,      xpMax: 3875,      emoji: EMOJI.emerald },
-    diamond:   { name: 'Diamond',   price: 10000,    gemsMin: 12000,     gemsMax: 15500,     xpMin: 6000,      xpMax: 7750,      emoji: EMOJI.diamond },
-    ruby:      { name: 'Ruby',      price: 25000,    gemsMin: 30000,     gemsMax: 38750,     xpMin: 15000,     xpMax: 19375,     emoji: EMOJI.ruby },
-    sapphire:  { name: 'Sapphire',  price: 50000,    gemsMin: 60000,     gemsMax: 77500,     xpMin: 30000,     xpMax: 38750,     emoji: EMOJI.sapphire },
-    netherite: { name: 'Netherite', price: 100000,   gemsMin: 120000,    gemsMax: 155000,    xpMin: 60000,     xpMax: 77500,     emoji: EMOJI.netherite },
-    obsidian:  { name: 'Obsidian',  price: 500000,   gemsMin: 600000,    gemsMax: 775000,    xpMin: 300000,    xpMax: 387500,    emoji: EMOJI.obsidian },
-    bedrock:   { name: 'Bedrock',   price: 1000000,  gemsMin: 1200000,   gemsMax: 1550000,   xpMin: 600000,    xpMax: 775000,    emoji: EMOJI.bedrock }
+    emerald:   { name: 'Emerald',   priceWL: 5,    gemsMin: 10500,   gemsMax: 11000,   xpMin: 2100,   xpMax: 2200,   emoji: EMOJI.emerald },
+    diamond:   { name: 'Diamond',   priceWL: 10,   gemsMin: 21000,   gemsMax: 22000,   xpMin: 4200,   xpMax: 4400,   emoji: EMOJI.diamond },
+    ruby:      { name: 'Ruby',      priceWL: 25,   gemsMin: 52500,   gemsMax: 55000,   xpMin: 10500,  xpMax: 11000,  emoji: EMOJI.ruby },
+    sapphire:  { name: 'Sapphire',  priceWL: 50,   gemsMin: 105000,  gemsMax: 110000,  xpMin: 21000,  xpMax: 22000,  emoji: EMOJI.sapphire },
+    netherite: { name: 'Netherite', priceWL: 100,  gemsMin: 210000,  gemsMax: 220000,  xpMin: 42000,  xpMax: 44000,  emoji: EMOJI.netherite },
+    obsidian:  { name: 'Obsidian',  priceWL: 250,  gemsMin: 525000,  gemsMax: 550000,  xpMin: 105000, xpMax: 110000, emoji: EMOJI.obsidian },
+    bedrock:   { name: 'Bedrock',   priceWL: 500,  gemsMin: 1050000, gemsMax: 1100000, xpMin: 210000, xpMax: 220000, emoji: EMOJI.bedrock }
 };
 
-// Merge untuk lookup
 const SHOP_BLOCKS = { ...BLOCKS_LOW, ...BLOCK_POG, ...BLOCKS_HIGH };
 
 // ==========================================
 // 🎁 ITEMS
 // ==========================================
 const SHOP_ITEMS = {
-    arroz: {
-        name: 'Arroz Con Pollo', price: 50000, emoji: '🍗',
-        category: 'buff', duration: 300, desc: 'x2 Gems selama 5 menit', color: '#E67E22'
-    },
-    clover: {
-        name: 'Lucky Clover', price: 250000, emoji: '🍀',
-        category: 'buff', duration: 300, desc: 'x2 XP selama 5 menit', color: '#2ECC71'
-    },
-    gempack: {
-        name: 'Gem Pack', price: 100000, emoji: '💎',
-        category: 'instant', effect: 'gems', amount: 150000, desc: 'Buka untuk dapat +150.000 Gems instant', color: '#3498DB'
-    },
-    xpscroll: {
-        name: 'XP Scroll', price: 150000, emoji: '📜',
-        category: 'instant', effect: 'xp', amount: 50000, desc: 'Buka untuk dapat +50.000 XP instant', color: '#9B59B6'
-    },
-    bomb: {
-        name: 'Block Bomb', price: 25000, emoji: '💣',
-        category: 'instant', effect: 'blocks', amount: 100, desc: "Meledakkan 100 Pot O' Gems ke inventory", color: '#E74C3C'
-    },
-    timewarp: {
-        name: 'Time Warp', price: 500000, emoji: '⏳',
-        category: 'buff', duration: TIMEWARP_DURATION, desc: 'Auto Farm 2x lebih cepat selama 60 detik', color: '#F1C40F'
-    },
-    gbc: {
-        name: 'GBC (Gacha Box Crystal)', price: 50000, emoji: EMOJI.gbc,
-        category: 'gacha', desc: 'Tiket gacha — pakai di menu 🎰 Gacha', color: '#9B59B6'
-    }
+    arroz: { name: 'Arroz Con Pollo', price: 50000, emoji: '🍗', category: 'buff', duration: 300, desc: 'x2 Gems selama 5 menit' },
+    clover: { name: 'Lucky Clover', price: 250000, emoji: '🍀', category: 'buff', duration: 300, desc: 'x2 XP selama 5 menit' },
+    gempack: { name: 'Gem Pack', price: 100000, emoji: '💎', category: 'instant', effect: 'gems', amount: 150000, desc: 'Buka untuk dapat +150.000 Gems instant' },
+    xpscroll: { name: 'XP Scroll', price: 150000, emoji: '📜', category: 'instant', effect: 'xp', amount: 50000, desc: 'Buka untuk dapat +50.000 XP instant' },
+    bomb: { name: 'Block Bomb', price: 25000, emoji: '💣', category: 'instant', effect: 'blocks', amount: 100, desc: "Meledakkan 100 Pot O' Gems ke inventory" },
+    timewarp: { name: 'Time Warp', price: 500000, emoji: '⏳', category: 'buff', duration: TIMEWARP_DURATION, desc: 'Auto Farm 2x lebih cepat selama 60 detik' },
+    gbc: { name: 'GBC (Gacha Box Crystal)', price: 50000, emoji: EMOJI.gbc, category: 'gacha', desc: 'Tiket gacha — pakai di menu 🎰 Gacha' }
 };
 
 // ==========================================
-// 🔴 ANCES RED — Upgradeable Gem Booster
+// 🔴 ANCES RED
 // ==========================================
 const ANCES_RED = {
     name: 'Ances Red',
@@ -205,49 +186,42 @@ const ANCES_RED = {
     maxLevel: 6,
     bonuses: [0, 5, 10, 15, 20, 25, 35],
     costs: [
-        { gems: 500000,   bgl: 0 },   // 0 → 1
-        { gems: 2000000,  bgl: 0 },   // 1 → 2
-        { gems: 10000000, bgl: 0 },   // 2 → 3
-        { gems: 50000000, bgl: 0 },   // 3 → 4
-        { gems: 0,        bgl: 1 },   // 4 → 5
-        { gems: 0,        bgl: 5 }    // 5 → 6
+        { gems: 500000,   bgl: 0 },
+        { gems: 2000000,  bgl: 0 },
+        { gems: 10000000, bgl: 0 },
+        { gems: 50000000, bgl: 0 },
+        { gems: 0,        bgl: 1 },
+        { gems: 0,        bgl: 5 }
     ]
 };
 
 // ==========================================
-// 🎰 GACHA CONFIG (unlimited)
+// 🎰 GACHA
 // ==========================================
 const GACHA_CONFIG = {
-    gangGlobalSupply: 100,  // ← 100 (bukan 1000)
+    gangGlobalSupply: 100,
     prizes: [
-        // COMMON
         { key: 'gems_50k',   type: 'gems',     amount: 50000,   chance: 20, label: '50.000 Gems' },
         { key: 'xp_25k',     type: 'xp',       amount: 25000,   chance: 15, label: '25.000 XP' },
         { key: 'gbc_1',      type: 'gbc',      amount: 1,       chance: 12, label: '1 GBC (roll lagi!)' },
         { key: 'bomb_5',     type: 'bomb',     amount: 5,       chance: 8,  label: '5× Block Bomb' },
-        // UNCOMMON
         { key: 'arroz_3',    type: 'arroz',    amount: 3,       chance: 8,  label: '3× Arroz' },
         { key: 'clover_2',   type: 'clover',   amount: 2,       chance: 7,  label: '2× Clover' },
         { key: 'gempack_2',  type: 'gempack',  amount: 2,       chance: 5,  label: '2× Gem Pack' },
         { key: 'xpscroll_1', type: 'xpscroll', amount: 1,       chance: 5,  label: '1× XP Scroll' },
-        // RARE
         { key: 'timewarp_1', type: 'timewarp', amount: 1,       chance: 5,  label: '1× Time Warp' },
         { key: 'gems_500k',  type: 'gems',     amount: 500000,  chance: 5,  label: '500.000 Gems!' },
         { key: 'ancesred_1', type: 'ancesred', amount: 1,       chance: 3,  label: '🔴 1× Ances Red!' },
         { key: 'gems_2m',    type: 'gems',     amount: 2000000, chance: 2,  label: '2.000.000 Gems!!' },
-        // LEGENDARY
         { key: 'gang_1',     type: 'gang',     amount: 1,       chance: 5,  label: '🎉 GANG! (limited)' }
     ]
 };
 
-// ==========================================
-// 🦹 GANG — Item biasa (BUKAN upgradeable)
-// ==========================================
 const GANG = {
     name: 'Gang',
     emoji: EMOJI.gang,
-    maxCount: 6,       // max 6 gang (stack)
-    bonusPerGang: 5    // +5% gems per gang (max +30%)
+    maxCount: 6,
+    bonusPerGang: 5
 };
 
 // ==========================================
@@ -352,13 +326,9 @@ async function getGuildMemberIds(guildId) {
 function loadUser(userId, username) {
     const ud = db.getUser(userId, username);
     ud.maxXp = getMaxXpForLevel(ud.level);
-
-    // Pastikan semua block key ada
     for (const k in SHOP_BLOCKS) {
         if (ud.blocks[k] === undefined) ud.blocks[k] = 0;
     }
-
-    // Pastikan item key ada
     if (!ud.items.gempack) ud.items.gempack = 0;
     if (!ud.items.xpscroll) ud.items.xpscroll = 0;
     if (!ud.items.bomb) ud.items.bomb = 0;
@@ -368,6 +338,13 @@ function loadUser(userId, username) {
     if (ud.items.ancesRedLevel === undefined) ud.items.ancesRedLevel = 0;
     if (!ud.activeBuffs.timewarp) ud.activeBuffs.timewarp = 0;
     return ud;
+}
+
+function formatWL(v) {
+    if (v === 0) return '0';
+    if (v < 1) return v.toFixed(2);
+    if (v === Math.floor(v)) return v.toLocaleString();
+    return v.toFixed(2);
 }
 
 function formatStock(k, a) {
@@ -390,7 +367,7 @@ function mainEmbed(ud) {
 
     const autoIcon = ud.autoFarm ? '▶️' : '⏸️';
     const twActive = isBuffActive(ud, 'timewarp');
-    const autoText = ud.autoFarm ? `**ON** · ${(interval / 1000).toFixed(1)}s${twActive ? ' ⚡' : ''}` : '**OFF**';
+    const autoText = ud.autoFarm ? `**ON** · (interval/1000).toFixed(1)s{twActive ? ' ⚡' : ''}` : '**OFF**';
     const statusIcon = ud.autoFarm ? '🟢' : '⚪';
 
     const buffs = [];
@@ -400,7 +377,7 @@ function mainEmbed(ud) {
     const buffText = buffs.length ? buffs.join('  ·  ') : '*Tidak ada buff aktif*';
 
     const toolText = tool
-        ? `${tool.emoji} **${tool.name}** x${tool.multiplier}  ·  ${tool.blocksPerBreak} far`
+        ? `tool.emoji**{tool.name}** x${tool.multiplier}  ·  ${tool.blocksPerBreak} far`
         : '⚪ **Tidak ada** · 1 far';
 
     const stockText = isUnlimited(ud.selectedBlock)
@@ -416,7 +393,7 @@ function mainEmbed(ud) {
         .setColor(ud.autoFarm ? '#57F287' : '#2b2d31')
         .setAuthor({ name: `🌾 Farming Panel — ${ud.username}` })
         .setDescription(
-            `**Level ${ud.level}**  ·  ⭐ **${ud.skillPoints} SP**\n` +
+            `**Level ud.level** · ⭐**{ud.skillPoints} SP**\n` +
             `\`${xpBar}\`  **${Math.floor(xpPercent * 100)}%**\n` +
             `📈 ${ud.xp.toLocaleString()} / ${ud.maxXp.toLocaleString()} XP`
         )
@@ -426,14 +403,15 @@ function mainEmbed(ud) {
                 value:
                     `🎉 **Event**  ·  ${ev.name}\n` +
                     `💰 **Gems**  ·  ${Math.floor(ud.gems).toLocaleString()}\n` +
-                    `⛏️ **Mining**  ·  ${sel.emoji} ${sel.name} (${stockText})`,
+                    `${EMOJI.wl} **WL**  ·  ${formatWL(ud.locks.wl)}\n` +
+                    `⛏️ **Mining**  ·  ${sel.emoji} sel.name({stockText})`,
                 inline: false
             },
             {
                 name: '💎  Booster',
                 value:
-                    `${ANCES_RED.emoji} **Ances Red**  ·  Lv.${ancesLevel}/${ANCES_RED.maxLevel}\n` +
-                    `${GANG.emoji} **Gang**  ·  ${gangCount}/${GANG.maxCount}\n` +
+                    `ANCESRED.emoji**AncesRed** · Lv.{ancesLevel}/${ANCES_RED.maxLevel}\n` +
+                    `${GANG.emoji} **Gang**  ·  gangCount/{GANG.maxCount}\n` +
                     `✨ **Total Boost**  ·  **+${boostPercent}%** Gems`,
                 inline: false
             },
@@ -461,22 +439,9 @@ function mainEmbed(ud) {
 // ==========================================
 function mainButtons(ud) {
     const row1 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId('btn_farm')
-            .setLabel('Farm Manual')
-            .setEmoji('🌾')
-            .setStyle(ButtonStyle.Success)
-            .setDisabled(ud.autoFarm),
-        new ButtonBuilder()
-            .setCustomId('btn_toggle_auto')
-            .setLabel(ud.autoFarm ? 'Stop Auto' : 'Start Auto')
-            .setEmoji(ud.autoFarm ? '⏹️' : '▶️')
-            .setStyle(ud.autoFarm ? ButtonStyle.Danger : ButtonStyle.Primary),
-        new ButtonBuilder()
-            .setCustomId('nav_change_block')
-            .setLabel('Ganti Block')
-            .setEmoji('⛏️')
-            .setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId('btn_farm').setLabel('Farm Manual').setEmoji('🌾').setStyle(ButtonStyle.Success).setDisabled(ud.autoFarm),
+        new ButtonBuilder().setCustomId('btn_toggle_auto').setLabel(ud.autoFarm ? 'Stop Auto' : 'Start Auto').setEmoji(ud.autoFarm ? '⏹️' : '▶️').setStyle(ud.autoFarm ? ButtonStyle.Danger : ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('nav_change_block').setLabel('Ganti Block').setEmoji('⛏️').setStyle(ButtonStyle.Secondary)
     );
 
     const row2 = new ActionRowBuilder().addComponents(
@@ -484,39 +449,14 @@ function mainButtons(ud) {
             .setCustomId('main_menu_select')
             .setPlaceholder('📋  Buka menu lainnya...')
             .addOptions(
-                new StringSelectMenuOptionBuilder()
-                    .setLabel('Shop')
-                    .setDescription('Beli tools, blocks, items, dan locks')
-                    .setValue('menu_shop')
-                    .setEmoji('🛒'),
-                new StringSelectMenuOptionBuilder()
-                    .setLabel('Items')
-                    .setDescription('Pakai buff & item instant')
-                    .setValue('menu_items')
-                    .setEmoji('🎒'),
-                new StringSelectMenuOptionBuilder()
-                    .setLabel('Gacha')
-                    .setDescription('Roll gacha pakai GBC — hadiah langka!')
-                    .setValue('menu_gacha')
-                    .setEmoji('🎰'),
-                new StringSelectMenuOptionBuilder()
-                    .setLabel('Profile')
-                    .setDescription('Lihat statistik lengkap kamu')
-                    .setValue('menu_profile')
-                    .setEmoji('👤'),
-                new StringSelectMenuOptionBuilder()
-                    .setLabel('Skills')
-                    .setDescription('Upgrade skill pakai SP')
-                    .setValue('menu_skills')
-                    .setEmoji('⭐'),
-                new StringSelectMenuOptionBuilder()
-                    .setLabel('Tools')
-                    .setDescription('Equip / ganti tool aktif')
-                    .setValue('menu_tools')
-                    .setEmoji('🛠️')
+                new StringSelectMenuOptionBuilder().setLabel('Shop').setDescription('Beli tools, blocks, items, dan locks').setValue('menu_shop').setEmoji('🛒'),
+                new StringSelectMenuOptionBuilder().setLabel('Items').setDescription('Pakai buff & item instant').setValue('menu_items').setEmoji('🎒'),
+                new StringSelectMenuOptionBuilder().setLabel('Gacha').setDescription('Roll gacha pakai GBC — hadiah langka!').setValue('menu_gacha').setEmoji('🎰'),
+                new StringSelectMenuOptionBuilder().setLabel('Profile').setDescription('Lihat statistik lengkap kamu').setValue('menu_profile').setEmoji('👤'),
+                new StringSelectMenuOptionBuilder().setLabel('Skills').setDescription('Upgrade skill pakai SP').setValue('menu_skills').setEmoji('⭐'),
+                new StringSelectMenuOptionBuilder().setLabel('Tools').setDescription('Equip / ganti tool aktif').setValue('menu_tools').setEmoji('🛠️')
             )
     );
-
     return [row1, row2];
 }
 
@@ -541,10 +481,10 @@ function shopMainEmbed(ud) {
     return new EmbedBuilder().setColor('#5865F2').setTitle('🛒 Shop').setDescription('Pilih kategori:')
         .addFields(
             { name: '🛠️ Tools', value: 'Tool boost farming', inline: true },
-            { name: '🪨 Blocks', value: 'Beli block', inline: true },
+            { name: '🪨 Blocks', value: 'Beli block pakai WL', inline: true },
             { name: '🎒 Items', value: 'Buff, instant & gacha ticket', inline: true },
             { name: '🔒 Locks', value: 'Beli lock', inline: true }
-        ).setFooter({ text: `Gems kamu: ${Math.floor(ud.gems).toLocaleString()}` });
+        ).setFooter({ text: `Gems: ${Math.floor(ud.gems).toLocaleString()} • WL: ${formatWL(ud.locks.wl)}` });
 }
 function shopMainButtons() {
     return [
@@ -565,7 +505,7 @@ function shopToolsEmbed(ud) {
     for (const k in SHOP_TOOLS) {
         const t = SHOP_TOOLS[k];
         const o = ud.ownedTools.includes(k) ? ' ✅' : '';
-        l.push(`${t.emoji} **${t.name}**${o} — ${t.price.toLocaleString()} ${EMOJI.gems}\n> x${t.multiplier} Gems | ⛏️ **${t.blocksPerBreak} far**`);
+        l.push(`t.emoji**{t.name}**${o} — ${t.price.toLocaleString()} ${EMOJI.gems}\n> x${t.multiplier} Gems | ⛏️ **${t.blocksPerBreak} far**`);
     }
     return new EmbedBuilder().setColor('#5865F2').setTitle('🛒 Shop — Tools')
         .setDescription(l.join('\n\n'))
@@ -577,13 +517,7 @@ function shopToolsButtons() {
     for (let i = 0; i < keys.length; i += 4) {
         const row = new ActionRowBuilder();
         for (let j = i; j < Math.min(i + 4, keys.length); j++) {
-            const k = keys[j];
-            row.addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`buy_${k}`)
-                    .setLabel(SHOP_TOOLS[k].name)
-                    .setStyle(ButtonStyle.Success)
-            );
+            row.addComponents(new ButtonBuilder().setCustomId(`buy_${keys[j]}`).setLabel(SHOP_TOOLS[keys[j]].name).setStyle(ButtonStyle.Success));
         }
         rows.push(row);
     }
@@ -595,7 +529,7 @@ function shopToolsButtons() {
 }
 
 // ==========================================
-// SHOP BLOCKS — 3 halaman (low, pog, high)
+// SHOP BLOCKS — pakai WL
 // ==========================================
 function shopBlocksEmbed(ud, page = 'low') {
     const l = [];
@@ -603,56 +537,45 @@ function shopBlocksEmbed(ud, page = 'low') {
 
     if (page === 'low') {
         title = '🛒 Shop — Blocks (Low Tier)';
-        l.push(`**🪨 BLOCK MURAH** *(+20% profit dari harga)*`, '');
+        l.push(`**🪨 BLOCK MURAH** *(pakai WL, profit ~5-10%)*`, '');
         for (const k in BLOCKS_LOW) {
             const b = BLOCKS_LOW[k];
-            const priceLabel = b.unlimited ? '**∞ (Unlimited)**' : `${b.price.toLocaleString()} ${EMOJI.gems}`;
-            l.push(`${b.emoji} **${b.name}** — ${priceLabel}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems | **${b.xpMin}-${b.xpMax} XP**\n> 📦 Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+            const priceLabel = b.unlimited ? '**∞ (Unlimited)**' : `${formatWL(b.priceWL)} ${EMOJI.wl}`;
+            const gemsEq = b.unlimited ? 0 : Math.floor(b.priceWL * WL_TO_GEMS);
+            l.push(`b.emoji**{b.name}** — priceLabel{gemsEq ? ` *(~${gemsEq.toLocaleString()} gems)*` : ''}\n> Reward: **${b.gemsMin.toLocaleString()}-b.gemsMax.toLocaleString()**Gems|**{b.xpMin}-${b.xpMax} XP**\n> 📦 Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
         }
     }
     else if (page === 'pog') {
         title = '🛒 Shop — Blocks (POG)';
-        l.push(`**🥔 POT O\' GEMS** *(1 WL per block, profit ~20%)*`, '');
+        l.push(`**${EMOJI.pog} POT O' GEMS** *(mid tier)*`, '');
         for (const k in BLOCK_POG) {
             const b = BLOCK_POG[k];
-            l.push(`${b.emoji} **${b.name}** — ${b.price.toLocaleString()} ${EMOJI.gems} *(1 WL)*\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems | **${b.xpMin}-${b.xpMax} XP**\n> 📦 Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+            const gemsEq = Math.floor(b.priceWL * WL_TO_GEMS);
+            l.push(`b.emoji**{b.name}** — ${formatWL(b.priceWL)} EMOJI.wl*(~{gemsEq.toLocaleString()} gems)*\n> Reward: **b.gemsMin.toLocaleString()-{b.gemsMax.toLocaleString()}** Gems | **b.xpMin-{b.xpMax} XP**\n> 📦 Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
         }
     }
     else {
         title = '🛒 Shop — Blocks (High Tier)';
-        l.push(`**💎 BLOCK MAHAL** *(+20% profit dari harga)*`, '');
+        l.push(`**💎 BLOCK MAHAL** *(pakai WL, profit ~5-10%)*`, '');
         for (const k in BLOCKS_HIGH) {
             const b = BLOCKS_HIGH[k];
-            l.push(`${b.emoji} **${b.name}** — ${b.price.toLocaleString()} ${EMOJI.gems}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems | **${b.xpMin}-${b.xpMax} XP**\n> 📦 Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+            const gemsEq = Math.floor(b.priceWL * WL_TO_GEMS);
+            l.push(`b.emoji**{b.name}** — ${formatWL(b.priceWL)} EMOJI.wl*(~{gemsEq.toLocaleString()} gems)*\n> Reward: **b.gemsMin.toLocaleString()-{b.gemsMax.toLocaleString()}** Gems | **b.xpMin-{b.xpMax} XP**\n> 📦 Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
         }
     }
 
     return new EmbedBuilder().setColor('#8B4513').setTitle(title)
         .setDescription(l.join('\n\n'))
-        .setFooter({ text: `Gems kamu: ${Math.floor(ud.gems).toLocaleString()} • Page: ${page}` });
+        .setFooter({ text: `${EMOJI.wl} WL kamu: ${formatWL(ud.locks.wl)} • Page: ${page}` });
 }
 
 function shopBlocksButtons(ud, page = 'low') {
-    // Nav row
     const navRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId('shop_blocks_page_low')
-            .setLabel('🪨 Low Tier')
-            .setStyle(page === 'low' ? ButtonStyle.Success : ButtonStyle.Secondary)
-            .setDisabled(page === 'low'),
-        new ButtonBuilder()
-            .setCustomId('shop_blocks_page_pog')
-            .setLabel('🥔 POG')
-            .setStyle(page === 'pog' ? ButtonStyle.Success : ButtonStyle.Secondary)
-            .setDisabled(page === 'pog'),
-        new ButtonBuilder()
-            .setCustomId('shop_blocks_page_high')
-            .setLabel('💎 High Tier')
-            .setStyle(page === 'high' ? ButtonStyle.Success : ButtonStyle.Secondary)
-            .setDisabled(page === 'high')
+        new ButtonBuilder().setCustomId('shop_blocks_page_low').setLabel('🪨 Low').setStyle(page === 'low' ? ButtonStyle.Success : ButtonStyle.Secondary).setDisabled(page === 'low'),
+        new ButtonBuilder().setCustomId('shop_blocks_page_pog').setLabel('🥔 POG').setStyle(page === 'pog' ? ButtonStyle.Success : ButtonStyle.Secondary).setDisabled(page === 'pog'),
+        new ButtonBuilder().setCustomId('shop_blocks_page_high').setLabel('💎 High').setStyle(page === 'high' ? ButtonStyle.Success : ButtonStyle.Secondary).setDisabled(page === 'high')
     );
 
-    // Buy buttons untuk page ini
     const currentBlocks = page === 'low' ? BLOCKS_LOW : (page === 'pog' ? BLOCK_POG : BLOCKS_HIGH);
     const buyRow1 = new ActionRowBuilder();
     const buyRow2 = new ActionRowBuilder();
@@ -661,12 +584,7 @@ function shopBlocksButtons(ud, page = 'low') {
     for (const k in currentBlocks) {
         const b = currentBlocks[k];
         if (b.unlimited) continue;
-
-        const btn = new ButtonBuilder()
-            .setCustomId(`customblock_${k}`)
-            .setLabel(`Beli ${b.name}`)
-            .setStyle(ButtonStyle.Primary);
-
+        const btn = new ButtonBuilder().setCustomId(`customblock_${k}`).setLabel(`Beli ${b.name}`).setStyle(ButtonStyle.Primary);
         if (count < 5) buyRow1.addComponents(btn);
         else buyRow2.addComponents(btn);
         count++;
@@ -675,12 +593,10 @@ function shopBlocksButtons(ud, page = 'low') {
     const rows = [navRow];
     if (buyRow1.components.length > 0) rows.push(buyRow1);
     if (buyRow2.components.length > 0) rows.push(buyRow2);
-
     rows.push(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('nav_shop').setLabel('⬅️ Kategori').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary)
     ));
-
     return rows;
 }
 
@@ -696,21 +612,21 @@ function changeBlockEmbed(ud, page = 'low') {
         for (const k in BLOCKS_LOW) {
             const b = BLOCKS_LOW[k];
             const s = ud.selectedBlock === k ? ' **[AKTIF]**' : '';
-            l.push(`${b.emoji} **${b.name}**${s}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems\n> Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+            l.push(`b.emoji**{b.name}**${s}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems\n> Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
         }
     } else if (page === 'pog') {
         title = '⛏️ Ganti Block — POG';
         for (const k in BLOCK_POG) {
             const b = BLOCK_POG[k];
             const s = ud.selectedBlock === k ? ' **[AKTIF]**' : '';
-            l.push(`${b.emoji} **${b.name}**${s}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems\n> Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+            l.push(`b.emoji**{b.name}**${s}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems\n> Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
         }
     } else {
         title = '⛏️ Ganti Block — High Tier';
         for (const k in BLOCKS_HIGH) {
             const b = BLOCKS_HIGH[k];
             const s = ud.selectedBlock === k ? ' **[AKTIF]**' : '';
-            l.push(`${b.emoji} **${b.name}**${s}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems\n> Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+            l.push(`b.emoji**{b.name}**${s}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems\n> Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
         }
     }
 
@@ -735,13 +651,7 @@ function changeBlockButtons(ud, page = 'low') {
         const stock = isUnlimited(k) ? '∞' : (ud.blocks[k] || 0).toLocaleString();
         const isSelected = ud.selectedBlock === k;
         const isDisabled = isSelected || (!isUnlimited(k) && (ud.blocks[k] || 0) <= 0);
-
-        const btn = new ButtonBuilder()
-            .setCustomId(`selectblock_${k}`)
-            .setLabel(`${b.name} (${stock})`)
-            .setStyle(isSelected ? ButtonStyle.Success : ButtonStyle.Primary)
-            .setDisabled(isDisabled);
-
+        const btn = new ButtonBuilder().setCustomId(`selectblock_k`).setLabel(`{b.name} (${stock})`).setStyle(isSelected ? ButtonStyle.Success : ButtonStyle.Primary).setDisabled(isDisabled);
         if (count < 5) selectRow1.addComponents(btn);
         else selectRow2.addComponents(btn);
         count++;
@@ -760,27 +670,16 @@ function changeBlockButtons(ud, page = 'low') {
 // SHOP ITEMS
 // ==========================================
 function shopItemsEmbed(ud) {
-    const buffs = [];
-    const instant = [];
-    const gacha = [];
-
+    const buffs = [], instant = [], gacha = [];
     for (const k in SHOP_ITEMS) {
         const i = SHOP_ITEMS[k];
-        const priceLabel = `${i.price.toLocaleString()} ${EMOJI.gems}`;
-        const line = `${i.emoji} **${i.name}** — ${priceLabel}\n> ${i.desc}\n> 📦 Dimiliki: **${ud.items[k] || 0}**`;
+        const line = `i.emoji**{i.name}** — ${i.price.toLocaleString()} ${EMOJI.gems}\n> ${i.desc}\n> 📦 Dimiliki: **${ud.items[k] || 0}**`;
         if (i.category === 'buff') buffs.push(line);
         else if (i.category === 'gacha') gacha.push(line);
         else instant.push(line);
     }
-
-    return new EmbedBuilder()
-        .setColor('#5865F2')
-        .setTitle('🛒 Shop — Items')
-        .setDescription(
-            `**✨ BUFF ITEM**\n\n${buffs.join('\n\n')}\n\n` +
-            `**⚡ INSTANT ITEM**\n\n${instant.join('\n\n')}\n\n` +
-            `**🎰 GACHA ITEM**\n\n${gacha.join('\n\n')}`
-        )
+    return new EmbedBuilder().setColor('#5865F2').setTitle('🛒 Shop — Items')
+        .setDescription(`**✨ BUFF ITEM**\n\n${buffs.join('\n\n')}\n\n**⚡ INSTANT ITEM**\n\n${instant.join('\n\n')}\n\n**🎰 GACHA ITEM**\n\n${gacha.join('\n\n')}`)
         .setFooter({ text: `Gems kamu: ${Math.floor(ud.gems).toLocaleString()}` });
 }
 function shopItemsButtons() {
@@ -809,7 +708,7 @@ function shopLocksEmbed(ud) {
     const l = ['**BELI LOCK**', ''];
     for (const k in SHOP_LOCKS) {
         const x = SHOP_LOCKS[k];
-        l.push(`${x.emoji} **${x.name}** — ${x.price.toLocaleString()} ${EMOJI.gems}/lock\n> 📦 Kamu punya: **${ud.locks[k].toLocaleString()}**`);
+        l.push(`x.emoji**{x.name}** — ${x.price.toLocaleString()} ${EMOJI.gems}/lock\n> 📦 Kamu punya: **${formatWL(ud.locks[k])}**`);
     }
     l.push(`\n**Auto-convert:** 100 ${EMOJI.wl} → 1 ${EMOJI.dl} → 1 ${EMOJI.bgl} → 1 ${EMOJI.black}`);
     return new EmbedBuilder().setColor('#F1C40F').setTitle('🛒 Shop — Locks')
@@ -848,7 +747,7 @@ function skillsEmbed(ud) {
                 const lvl = ud.skills[k];
                 const isMax = lvl >= s.maxLevel;
                 const cost = getSkillUpgradeCost(lvl);
-                return `${s.emoji} **${s.name}** — ${isMax ? '**MAX** ✅' : `Lv. ${lvl}/${s.maxLevel} • **${cost} SP**`}`;
+                return `s.emoji**{s.name}** — ${isMax ? '**MAX** ✅' : `Lv. lvl/{s.maxLevel} • **${cost} SP**`}`;
             }).join('\n')
         )
         .setFooter({ text: `Level: ${ud.level} • SP: ${ud.skillPoints}` });
@@ -888,13 +787,13 @@ function itemsEmbed(ud) {
     if (ud.items.bomb > 0) instants.push(`💣 **Block Bomb** ×${ud.items.bomb}\n> +100 Pot O' Gems`);
 
     const others = [];
-    if (ud.items.gbc > 0) others.push(`${EMOJI.gbc} **GBC** ×${ud.items.gbc}\n> Tiket gacha`);
+    if (ud.items.gbc > 0) others.push(`EMOJI.gbc**GBC**×{ud.items.gbc}\n> Tiket gacha`);
 
     const ancesLevel = ud.items.ancesRedLevel || 0;
     const gangCount = ud.items.gang || 0;
     const passive = [];
-    passive.push(`${ANCES_RED.emoji} **Ances Red**  ·  Lv.**${ancesLevel}/${ANCES_RED.maxLevel}**  ·  +${ANCES_RED.bonuses[ancesLevel]}% Gems`);
-    passive.push(`${GANG.emoji} **Gang**  ·  **${gangCount}/${GANG.maxCount}**  ·  +${Math.min(gangCount, GANG.maxCount) * GANG.bonusPerGang}% Gems`);
+    passive.push(`ANCESRED.emoji**AncesRed** · Lv.**{ancesLevel}/ANCESRED.maxLevel** · +{ANCES_RED.bonuses[ancesLevel]}% Gems`);
+    passive.push(`GANG.emoji**Gang** · **{gangCount}/GANG.maxCount** · +{Math.min(gangCount, GANG.maxCount) * GANG.bonusPerGang}% Gems`);
 
     let desc = `**🔴 PASSIVE BOOSTER**\n\n${passive.join('\n')}\n\n`;
     if (buffs.length > 0) desc += `**✨ BUFF ITEM**\n\n${buffs.join('\n\n')}\n\n`;
@@ -907,54 +806,35 @@ function itemsEmbed(ud) {
 
 function itemsButtons(ud) {
     const rows = [];
-
     const buffRow = new ActionRowBuilder();
-    if (ud.items.arroz > 0) buffRow.addComponents(
-        new ButtonBuilder().setCustomId('use_arroz').setLabel(`🍗 Arroz (${ud.items.arroz})`).setStyle(ButtonStyle.Primary)
-    );
-    if (ud.items.clover > 0) buffRow.addComponents(
-        new ButtonBuilder().setCustomId('use_clover').setLabel(`🍀 Clover (${ud.items.clover})`).setStyle(ButtonStyle.Primary)
-    );
-    if (ud.items.timewarp > 0) buffRow.addComponents(
-        new ButtonBuilder().setCustomId('use_timewarp').setLabel(`⏳ Time Warp (${ud.items.timewarp})`).setStyle(ButtonStyle.Primary)
-    );
+    if (ud.items.arroz > 0) buffRow.addComponents(new ButtonBuilder().setCustomId('use_arroz').setLabel(`🍗 Arroz (${ud.items.arroz})`).setStyle(ButtonStyle.Primary));
+    if (ud.items.clover > 0) buffRow.addComponents(new ButtonBuilder().setCustomId('use_clover').setLabel(`🍀 Clover (${ud.items.clover})`).setStyle(ButtonStyle.Primary));
+    if (ud.items.timewarp > 0) buffRow.addComponents(new ButtonBuilder().setCustomId('use_timewarp').setLabel(`⏳ Time Warp (${ud.items.timewarp})`).setStyle(ButtonStyle.Primary));
     if (buffRow.components.length > 0) rows.push(buffRow);
 
     const instRow = new ActionRowBuilder();
-    if (ud.items.gempack > 0) instRow.addComponents(
-        new ButtonBuilder().setCustomId('use_gempack').setLabel(`💎 Gem Pack (${ud.items.gempack})`).setStyle(ButtonStyle.Success)
-    );
-    if (ud.items.xpscroll > 0) instRow.addComponents(
-        new ButtonBuilder().setCustomId('use_xpscroll').setLabel(`📜 XP Scroll (${ud.items.xpscroll})`).setStyle(ButtonStyle.Success)
-    );
-    if (ud.items.bomb > 0) instRow.addComponents(
-        new ButtonBuilder().setCustomId('use_bomb').setLabel(`💣 Bomb (${ud.items.bomb})`).setStyle(ButtonStyle.Success)
-    );
+    if (ud.items.gempack > 0) instRow.addComponents(new ButtonBuilder().setCustomId('use_gempack').setLabel(`💎 Gem Pack (${ud.items.gempack})`).setStyle(ButtonStyle.Success));
+    if (ud.items.xpscroll > 0) instRow.addComponents(new ButtonBuilder().setCustomId('use_xpscroll').setLabel(`📜 XP Scroll (${ud.items.xpscroll})`).setStyle(ButtonStyle.Success));
+    if (ud.items.bomb > 0) instRow.addComponents(new ButtonBuilder().setCustomId('use_bomb').setLabel(`💣 Bomb (${ud.items.bomb})`).setStyle(ButtonStyle.Success));
     if (instRow.components.length > 0) rows.push(instRow);
 
-    // Tombol upgrade Ances Red
     const ancesLevel = ud.items.ancesRedLevel || 0;
     if (ancesLevel < ANCES_RED.maxLevel) {
         const cost = ANCES_RED.costs[ancesLevel];
-        const costText = cost.gems > 0 ? `${cost.gems.toLocaleString()} Gems` : `${cost.bgl} BGL`;
+        const costText = cost.gems > 0 ? `cost.gems.toLocaleString()Gems`:`{cost.bgl} BGL`;
         rows.push(new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('upgrade_ancesred')
-                .setLabel(`Upgrade Ances Red → Lv.${ancesLevel + 1} (${costText})`)
-                .setEmoji(EMOJI.ancesred)
-                .setStyle(ButtonStyle.Danger)
+            new ButtonBuilder().setCustomId('upgrade_ancesred').setLabel(`Upgrade Ances Red → Lv.ancesLevel+1({costText})`).setEmoji(EMOJI.ancesred).setStyle(ButtonStyle.Danger)
         ));
     }
 
     rows.push(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary)
     ));
-
     return rows;
 }
 
 // ==========================================
-// 🎰 GACHA EMBED (unlimited)
+// 🎰 GACHA EMBED
 // ==========================================
 function gachaEmbed(ud) {
     const cfg = GACHA_CONFIG;
@@ -966,7 +846,7 @@ function gachaEmbed(ud) {
         const isGang = p.type === 'gang';
         const isAnces = p.type === 'ancesred';
         const mark = isGang ? '🎉 ' : (isAnces ? '🔴 ' : '');
-        prizeLines.push(`**${p.chance}%** ${mark}${p.label}`);
+        prizeLines.push(`**${p.chance}%** mark{p.label}`);
     }
 
     return new EmbedBuilder()
@@ -974,33 +854,20 @@ function gachaEmbed(ud) {
         .setTitle('🎰 Gacha — Lucky Roll')
         .setDescription(
             `Coba keberuntunganmu! Pakai ${EMOJI.gbc} **GBC** untuk roll.\n\n` +
-            `${EMOJI.gbc} **GBC kamu:** **${ud.items.gbc || 0}**\n` +
+            `EMOJI.gbc**GBCkamu:****{ud.items.gbc || 0}**\n` +
             `🎯 **Total roll:** ${ud.totalGachaRolls}\n` +
-            `${GANG.emoji} **Gang global:** ${gangGlobalOwned}/${cfg.gangGlobalSupply} *(${gangRemaining} sisa)*`
+            `${GANG.emoji} **Gang global:** gangGlobalOwned/{cfg.gangGlobalSupply} *(${gangRemaining} sisa)*`
         )
-        .addFields({
-            name: '🎁  Hadiah & Persentase',
-            value: prizeLines.join('\n'),
-            inline: false
-        })
+        .addFields({ name: '🎁  Hadiah & Persentase', value: prizeLines.join('\n'), inline: false })
         .setFooter({ text: '1 roll = 1 GBC • Tanpa limit harian' })
         .setTimestamp();
 }
-
 function gachaButtons(ud) {
     const gbc = ud.items.gbc || 0;
     return [
         new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('gacha_roll_1')
-                .setLabel('🎲 Roll 1x')
-                .setStyle(ButtonStyle.Success)
-                .setDisabled(gbc < 1),
-            new ButtonBuilder()
-                .setCustomId('gacha_roll_10')
-                .setLabel('🎲 Roll 10x')
-                .setStyle(ButtonStyle.Primary)
-                .setDisabled(gbc < 10)
+            new ButtonBuilder().setCustomId('gacha_roll_1').setLabel('🎲 Roll 1x').setStyle(ButtonStyle.Success).setDisabled(gbc < 1),
+            new ButtonBuilder().setCustomId('gacha_roll_10').setLabel('🎲 Roll 10x').setStyle(ButtonStyle.Primary).setDisabled(gbc < 10)
         ),
         new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('nav_shop_items').setLabel('🛒 Beli GBC').setStyle(ButtonStyle.Secondary),
@@ -1015,7 +882,7 @@ function gachaButtons(ud) {
 function toolsEmbed(ud) {
     const t = ud.equippedTool ? SHOP_TOOLS[ud.equippedTool] : null;
     return new EmbedBuilder().setColor('#3498DB').setTitle('🛠️ Tools')
-        .setDescription((t ? `**Equipped:** ${t.emoji} **${t.name} x${t.multiplier}**` : '*Tidak ada tool*') + `\n\n*Tools multiply Gems & XP.*`);
+        .setDescription((t ? `**Equipped:** t.emoji**{t.name} x${t.multiplier}**` : '*Tidak ada tool*') + `\n\n*Tools multiply Gems & XP.*`);
 }
 function toolsButtons(ud) {
     const r = [];
@@ -1027,16 +894,10 @@ function toolsButtons(ud) {
                 .setDescription(`x${t.multiplier} Gems • ${t.blocksPerBreak} far`)
                 .setDefault(ud.equippedTool === k);
         });
-        opts.push(new StringSelectMenuOptionBuilder()
-            .setLabel('Unequip').setValue('unequip')
-            .setDescription('Lepas (x1)').setDefault(!ud.equippedTool));
-        r.push(new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder().setCustomId('select_tool').setPlaceholder('Pilih tool').addOptions(opts)
-        ));
+        opts.push(new StringSelectMenuOptionBuilder().setLabel('Unequip').setValue('unequip').setDescription('Lepas (x1)').setDefault(!ud.equippedTool));
+        r.push(new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId('select_tool').setPlaceholder('Pilih tool').addOptions(opts)));
     }
-    r.push(new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary)
-    ));
+    r.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary)));
     return r;
 }
 
@@ -1054,26 +915,23 @@ function profileEmbed(ud) {
             { name: '🏆 Level', value: `${ud.level}`, inline: true },
             { name: '🛠️ Tool', value: t ? `${t.emoji} ${t.name}` : 'Tidak ada', inline: true },
             { name: '💰 Gems', value: Math.floor(ud.gems).toLocaleString(), inline: true },
-            { name: `${EMOJI.pog} POG`, value: (ud.blocks.pog || 0).toLocaleString(), inline: true },
+            { name: `${EMOJI.wl} WL`, value: formatWL(ud.locks.wl), inline: true },
             { name: '⭐ SP', value: `${ud.skillPoints}`, inline: true },
             { name: '🎰 Total Roll', value: `${ud.totalGachaRolls}`, inline: true },
             { name: '💎 Booster', value:
-                `${ANCES_RED.emoji} **Ances Red** · Lv.${ancesLevel}/${ANCES_RED.maxLevel}\n` +
-                `${GANG.emoji} **Gang** · ${gangCount}/${GANG.maxCount}\n` +
-                `✨ **Total Boost** · **+${Math.round((totalBoost - 1) * 100)}%** Gems`,
-                inline: false },
+                `ANCESRED.emoji**AncesRed**·Lv.{ancesLevel}/${ANCES_RED.maxLevel}\n` +
+                `${GANG.emoji} **Gang** · gangCount/{GANG.maxCount}\n` +
+                `✨ **Total Boost** · **+${Math.round((totalBoost - 1) * 100)}%** Gems`, inline: false },
             { name: '🔒 Locks', value:
-                `${EMOJI.wl} **WL**: ${ud.locks.wl.toLocaleString()}\n` +
-                `${EMOJI.dl} **DL**: ${ud.locks.dl.toLocaleString()}\n` +
-                `${EMOJI.bgl} **BGL**: ${ud.locks.bgl.toLocaleString()}\n` +
-                `${EMOJI.black} **BGLB**: ${ud.locks.bglb.toLocaleString()}\n` +
-                `**Total: ${tv.toLocaleString()} WL**`, inline: false }
+                `${EMOJI.wl} **WL**: ${formatWL(ud.locks.wl)}\n` +
+                `${EMOJI.dl} **DL**: ${formatWL(ud.locks.dl)}\n` +
+                `${EMOJI.bgl} **BGL**: ${formatWL(ud.locks.bgl)}\n` +
+                `${EMOJI.black} **BGLB**: ${formatWL(ud.locks.bglb)}\n` +
+                `**Total: ${formatWL(tv)} WL**`, inline: false }
         );
 }
 function profileButtons() {
-    return [new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary)
-    )];
+    return [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary))];
 }
 
 // ==========================================
@@ -1094,11 +952,11 @@ async function generateLeaderboardEmbed(guildId) {
     const lines = top.map((e, i) => {
         const r = medals[i] || `**#${i + 1}**`;
         const p = [];
-        if (e.locks.wl > 0) p.push(`${EMOJI.wl} ${e.locks.wl}`);
-        if (e.locks.dl > 0) p.push(`${EMOJI.dl} ${e.locks.dl}`);
-        if (e.locks.bgl > 0) p.push(`${EMOJI.bgl} ${e.locks.bgl}`);
-        if (e.locks.bglb > 0) p.push(`${EMOJI.black} ${e.locks.bglb}`);
-        return `${r} **${e.username}** (Lv.${e.level})\n> ${p.join(' | ')}\n> 💰 **${e.totalValue.toLocaleString()} WL**`;
+        if (e.locks.wl > 0) p.push(`${EMOJI.wl} ${formatWL(e.locks.wl)}`);
+        if (e.locks.dl > 0) p.push(`${EMOJI.dl} ${formatWL(e.locks.dl)}`);
+        if (e.locks.bgl > 0) p.push(`${EMOJI.bgl} ${formatWL(e.locks.bgl)}`);
+        if (e.locks.bglb > 0) p.push(`${EMOJI.black} ${formatWL(e.locks.bglb)}`);
+        return `r**{e.username}** (Lv.${e.level})\n> ${p.join(' | ')}\n> 💰 **${formatWL(e.totalValue)} WL**`;
     });
     if (lines.length === 0) lines.push('*Belum ada pemain dengan lock.*');
     return new EmbedBuilder().setColor('#FFD700').setTitle(`🏆 Leaderboard — ${gn}`)
@@ -1212,9 +1070,9 @@ function doBreak(ud) {
 
 function formatBreakLog(r, prefix = 'Auto') {
     const bd = SHOP_BLOCKS[r.blockType];
-    let m = `${prefix} [${bd.name}]: -${r.blocksBroken}`;
+    let m = `prefix[{bd.name}]: -${r.blocksBroken}`;
     if (r.returned > 0) m += ` (+${r.returned})`;
-    m += ` → +${r.gemsGained.toLocaleString()} ${EMOJI.gems} / +${r.xpGained.toLocaleString()} XP`;
+    m += ` → +${r.gemsGained.toLocaleString()} EMOJI.gems/+{r.xpGained.toLocaleString()} XP`;
     if (r.levelsGained > 0) m += ` 🎉 **LEVEL UP! +${r.levelsGained} SP**`;
     return m;
 }
@@ -1229,7 +1087,6 @@ function stopAfkCheck(userId) {
     if (t.timeoutTimer) clearTimeout(t.timeoutTimer);
     afkCheckTimers.delete(userId);
 }
-
 function scheduleAfkCheck(userId, guildId) {
     stopAfkCheck(userId);
     const cfg = db.getAfkCheckConfig(guildId);
@@ -1239,7 +1096,6 @@ function scheduleAfkCheck(userId, guildId) {
     afkCheckTimers.set(userId, { nextTimer, timeoutTimer: null, guildId });
     console.log(`⏰ [AFK] Scheduled ${userId} dalam ${cfg.intervalMinutes} menit`);
 }
-
 async function doAfkCheck(userId, guildId) {
     const cfg = db.getAfkCheckConfig(guildId);
     if (!cfg || !cfg.enabled) { stopAfkCheck(userId); return; }
@@ -1253,16 +1109,10 @@ async function doAfkCheck(userId, guildId) {
     if (!thread || thread.archived) { scheduleAfkCheck(userId, guildId); return; }
     const timeoutMs = cfg.timeoutSeconds * 1000;
     const embed = new EmbedBuilder().setColor('#F1C40F').setTitle('⏰ Cek Online')
-        .setDescription(
-            `Halo <@${userId}>!\n\nKamu masih online?\n\n` +
-            `> Klik **✅ Masih Online** dalam **${cfg.timeoutSeconds} detik**.\n` +
-            `> Kalau tidak, **Auto Farm dimatikan** & **thread dihapus**.`
-        ).setTimestamp();
+        .setDescription(`Halo <@${userId}>!\n\nKamu masih online?\n\n> Klik **✅ Masih Online** dalam **${cfg.timeoutSeconds} detik**.\n> Kalau tidak, **Auto Farm dimatikan** & **thread dihapus**.`)
+        .setTimestamp();
     const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-            .setCustomId(`afk_online_${userId}`)
-            .setLabel('✅ Masih Online')
-            .setStyle(ButtonStyle.Success)
+        new ButtonBuilder().setCustomId(`afk_online_${userId}`).setLabel('✅ Masih Online').setStyle(ButtonStyle.Success)
     );
     let msg;
     try { msg = await thread.send({ embeds: [embed], components: [row] }); }
@@ -1271,7 +1121,6 @@ async function doAfkCheck(userId, guildId) {
     afkCheckTimers.set(userId, { nextTimer: null, timeoutTimer, guildId });
     console.log(`⏰ [AFK] Cek dikirim ke ${userId}, timeout ${cfg.timeoutSeconds}s`);
 }
-
 async function handleAfkTimeout(userId, guildId, msg) {
     console.log(`⏰ [AFK] Timeout! ${userId} tidak konfirmasi.`);
     const ud = userCache.get(userId);
@@ -1283,10 +1132,8 @@ async function handleAfkTimeout(userId, guildId, msg) {
     }
     try {
         await msg.edit({
-            embeds: [new EmbedBuilder()
-                .setColor('#ED4245').setTitle('⏰ Timeout')
-                .setDescription(`<@${userId}> tidak konfirmasi.\n\n> Auto Farm dimatikan.\n> Thread akan dihapus...`)
-                .setTimestamp()],
+            embeds: [new EmbedBuilder().setColor('#ED4245').setTitle('⏰ Timeout')
+                .setDescription(`<@${userId}> tidak konfirmasi.\n\n> Auto Farm dimatikan.\n> Thread akan dihapus...`).setTimestamp()],
             components: []
         });
     } catch {}
@@ -1359,9 +1206,9 @@ function startAutoFarm(userId) {
                 db.saveUser(ud);
                 if (ud._acc && ud._acc.blocks > 0) {
                     const bd = SHOP_BLOCKS[ud._acc.blockType];
-                    let m = `Auto [${bd.name}]: -${ud._acc.blocks}`;
+                    let m = `Auto [bd.name]:-{ud._acc.blocks}`;
                     if (ud._acc.returned > 0) m += ` (+${ud._acc.returned})`;
-                    m += ` → +${ud._acc.gems.toLocaleString()} ${EMOJI.gems} / +${ud._acc.xp.toLocaleString()} XP`;
+                    m += ` → +${ud._acc.gems.toLocaleString()} EMOJI.gems/+{ud._acc.xp.toLocaleString()} XP`;
                     if (ud._acc.levels > 0) m += ` 🎉 **LEVEL UP! +${ud._acc.levels} SP**`;
                     ud.lastBreak = m;
                     ud._acc = null;
@@ -1381,9 +1228,9 @@ function startAutoFarm(userId) {
             if (ud.autoFarm !== true) return;
             if (ud._acc && ud._acc.blocks > 0) {
                 const bd = SHOP_BLOCKS[ud._acc.blockType];
-                let m = `Auto [${bd.name}]: -${ud._acc.blocks}`;
+                let m = `Auto [bd.name]:-{ud._acc.blocks}`;
                 if (ud._acc.returned > 0) m += ` (+${ud._acc.returned})`;
-                m += ` → +${ud._acc.gems.toLocaleString()} ${EMOJI.gems} / +${ud._acc.xp.toLocaleString()} XP`;
+                m += ` → +${ud._acc.gems.toLocaleString()} EMOJI.gems/+{ud._acc.xp.toLocaleString()} XP`;
                 if (ud._acc.levels > 0) m += ` 🎉 **LEVEL UP! +${ud._acc.levels} SP**`;
                 ud.lastBreak = m;
                 ud._acc = { gems: 0, xp: 0, blocks: 0, returned: 0, levels: 0, blockType: null };
@@ -1404,7 +1251,6 @@ function startAutoFarm(userId) {
     }, interval);
     autoFarmIntervals.set(userId, intervalId);
 }
-
 function stopAutoFarm(userId) {
     autoFarmTokens.set(userId, (autoFarmTokens.get(userId) || 0) + 1);
     const id = autoFarmIntervals.get(userId);
@@ -1450,13 +1296,8 @@ async function realtimeResetPlayer(targetUser) {
     if (oldMsg) {
         try {
             await oldMsg.edit({
-                embeds: [new EmbedBuilder()
-                    .setColor('#ED4245').setTitle('♻️ Akun Direset')
-                    .setDescription(
-                        `**@${username}** telah direset.\n\n` +
-                        `> 🏆 Level: **1**\n> 💰 Gems: **500.000**\n` +
-                        `> ${EMOJI.dirt} Dirt: **∞**\n> ${EMOJI.pog} POG: **0**\n> ${EMOJI.wl} WL: **1**`
-                    ).setTimestamp()],
+                embeds: [new EmbedBuilder().setColor('#ED4245').setTitle('♻️ Akun Direset')
+                    .setDescription(`**@${username}** telah direset.\n\n> 🏆 Level: **1**\n> 💰 Gems: **500.000**\n> ${EMOJI.wl} WL: **1**`).setTimestamp()],
                 components: [new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId('nav_main').setLabel('🔄 Mulai Ulang').setStyle(ButtonStyle.Success)
                 )]
@@ -1466,16 +1307,10 @@ async function realtimeResetPlayer(targetUser) {
     await refreshAllLeaderboards();
     return success;
 }
-
 async function invalidateOldPanel(userId, reason = 'Panel ini sudah tidak aktif.') {
     const om = activeMessages.get(userId);
     if (!om) return;
-    try {
-        await om.edit({
-            embeds: [new EmbedBuilder().setColor('#ED4245').setDescription(`❌ ${reason}`)],
-            components: []
-        });
-    } catch {}
+    try { await om.edit({ embeds: [new EmbedBuilder().setColor('#ED4245').setDescription(`❌ ${reason}`)], components: [] }); } catch {}
     activeMessages.delete(userId);
 }
 
@@ -1493,17 +1328,10 @@ async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
             let dt = 0;
             const safeDel = async (t) => {
                 try {
-                    if (t.archived) {
-                        try { await t.setArchived(false, 'Cleanup'); await new Promise(r => setTimeout(r, 500)); } catch {}
-                    }
-                    await t.delete('Cleanup');
-                    dt++;
+                    if (t.archived) { try { await t.setArchived(false, 'Cleanup'); await new Promise(r => setTimeout(r, 500)); } catch {} }
+                    await t.delete('Cleanup'); dt++;
                 } catch {
-                    try {
-                        try { await t.setLocked(true); } catch {}
-                        await t.setArchived(true);
-                        dt++;
-                    } catch {}
+                    try { try { await t.setLocked(true); } catch {} await t.setArchived(true); dt++; } catch {}
                 }
             };
             try {
@@ -1523,11 +1351,8 @@ async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
                 } catch {}
             }
             const embed = new EmbedBuilder().setColor('#57F287').setTitle('🌱 GrowExs Farming')
-                .setDescription(
-                    'Welcome to **GrowExs**!\n\n' +
-                    'Press **Start Farming** below or use `/farming`.\n\n' +
-                    '⚠️ Setiap interval tertentu kamu diminta konfirmasi online. Kalau tidak direspon, Auto Farm mati & thread dihapus.'
-                ).setFooter({ text: 'GrowExs Farm Guide' });
+                .setDescription('Welcome to **GrowExs**!\n\nPress **Start Farming** below or use `/farming`.\n\n⚠️ Setiap interval tertentu kamu diminta konfirmasi online. Kalau tidak direspon, Auto Farm mati & thread dihapus.')
+                .setFooter({ text: 'GrowExs Farm Guide' });
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId('start_farming').setLabel('Start Farming').setEmoji('📖').setStyle(ButtonStyle.Success)
             );
@@ -1612,7 +1437,7 @@ client.on('channelDelete', async (channel) => {
 });
 
 // ==========================================
-// GACHA HELPER — Roll 1x
+// GACHA HELPER
 // ==========================================
 function rollGacha(ud) {
     const totalChance = GACHA_CONFIG.prizes.reduce((sum, p) => sum + p.chance, 0);
@@ -1624,7 +1449,6 @@ function rollGacha(ud) {
         if (roll <= 0) { selected = p; break; }
     }
 
-    // ===== HANDLE PRIZE =====
     const result = { label: selected.label, type: selected.type, success: true, extra: '' };
 
     if (selected.type === 'gems') {
@@ -1672,7 +1496,6 @@ function rollGacha(ud) {
         result.extra = `ANCESRED.emoji→Lv.{ud.items.ancesRedLevel}`;
     }
     else if (selected.type === 'gang') {
-        // Cek global supply
         const currentOwned = db.getGlobalStat('gang_owned');
         if (currentOwned >= GACHA_CONFIG.gangGlobalSupply) {
             result.success = false;
@@ -1720,17 +1543,9 @@ client.on('interactionCreate', async interaction => {
                     const timeout = interaction.options.getInteger('timeout');
                     const enabled = interaction.options.getBoolean('enabled');
                     const finalEnabled = enabled === null ? true : enabled;
-                    db.setAfkCheckConfig(interaction.guildId, {
-                        enabled: finalEnabled,
-                        intervalMinutes: interval,
-                        timeoutSeconds: timeout
-                    });
+                    db.setAfkCheckConfig(interaction.guildId, { enabled: finalEnabled, intervalMinutes: interval, timeoutSeconds: timeout });
                     return interaction.editReply({
-                        content:
-                            `✅ **AFK Check diset!**\n\n` +
-                            `> 🔄 Interval: **${interval} menit**\n` +
-                            `> ⏱️ Timeout: **${timeout} detik**\n` +
-                            `> 🟢 Status: ${finalEnabled ? '**Aktif**' : '**Nonaktif**'}`
+                        content: `✅ **AFK Check diset!**\n\n> 🔄 Interval: **${interval} menit**\n> ⏱️ Timeout: **${timeout} detik**\n> 🟢 Status: ${finalEnabled ? '**Aktif**' : '**Nonaktif**'}`
                     });
                 }
                 if (sub === 'status') {
@@ -1776,12 +1591,8 @@ client.on('interactionCreate', async interaction => {
                 await interaction.deferReply({ ephemeral: true });
                 const tu = interaction.options.getUser('player');
                 if (!tu) return interaction.editReply({ content: '❌ Player tidak valid.' });
-                const m = interaction.guild
-                    ? await interaction.guild.members.fetch(userId).catch(() => null)
-                    : null;
-                if (!isEventManager(m)) {
-                    return interaction.editReply({ content: `🔒 Hanya Event Manager / Admin.` });
-                }
+                const m = interaction.guild ? await interaction.guild.members.fetch(userId).catch(() => null) : null;
+                if (!isEventManager(m)) return interaction.editReply({ content: `🔒 Hanya Event Manager / Admin.` });
                 const ok = await realtimeResetPlayer(tu);
                 if (!ok) return interaction.editReply({ content: `⚠️ Player **${tu.username}** belum pernah main.` });
                 return interaction.editReply({ content: `✅ **Reset (REALTIME)!**\n\n> 👤 Player: **${tu.username}**` });
@@ -1814,22 +1625,16 @@ client.on('interactionCreate', async interaction => {
                 const msg = await interaction.editReply({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
                 activeMessages.set(userId, msg);
             }
-
             else if (interaction.commandName === 'event') {
                 const ud = loadUser(userId, interaction.user.username);
                 userCache.set(userId, ud);
                 await interaction.reply({ embeds: [eventEmbed(ud)], ephemeral: true });
             }
-
             else if (interaction.commandName === 'customevent') {
                 await interaction.deferReply({ ephemeral: true });
                 try {
-                    const m = interaction.guild
-                        ? await interaction.guild.members.fetch(userId).catch(() => null)
-                        : null;
-                    if (!isEventManager(m)) {
-                        return interaction.editReply({ content: `🔒 Hanya Event Manager / Admin.` });
-                    }
+                    const m = interaction.guild ? await interaction.guild.members.fetch(userId).catch(() => null) : null;
+                    if (!isEventManager(m)) return interaction.editReply({ content: `🔒 Hanya Event Manager / Admin.` });
                     const ud = loadUser(userId, interaction.user.username);
                     userCache.set(userId, ud);
                     const gm = interaction.options.getInteger('gems');
@@ -1841,15 +1646,13 @@ client.on('interactionCreate', async interaction => {
                     const msg = activeMessages.get(userId);
                     if (msg) { try { await msg.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); } catch {} }
                     return interaction.editReply({ content: `✅ Event: Gems xgm|Blocksx{bm}` });
-                } catch (e) {
-                    return interaction.editReply({ content: `❌ Gagal: ${e.message}` }).catch(() => {});
-                }
+                } catch (e) { return interaction.editReply({ content: `❌ Gagal: ${e.message}` }).catch(() => {}); }
             }
             return;
         }
 
         // ==========================================
-        // STRING SELECT MENU
+        // SELECT MENU
         // ==========================================
         if (interaction.isStringSelectMenu()) {
             const userId = interaction.user.id;
@@ -1857,25 +1660,18 @@ client.on('interactionCreate', async interaction => {
             if (interaction.customId === 'select_tool') {
                 let ud = userCache.get(userId);
                 if (!ud) { ud = loadUser(userId, interaction.user.username); userCache.set(userId, ud); }
-
                 if (autoFarmIntervals.has(userId)) {
                     stopAutoFarm(userId);
                     ud.autoFarm = false;
                     ud.lastBreak = 'Auto Farm dimatikan (interaksi lain).';
                     db.saveUser(ud);
                 }
-
                 const v = interaction.values[0];
                 let msg = '';
-                if (v === 'unequip') {
-                    ud.equippedTool = null;
-                    msg = '✅ Tool di-unequip.';
-                } else if (v.startsWith('equip_')) {
+                if (v === 'unequip') { ud.equippedTool = null; msg = '✅ Tool di-unequip.'; }
+                else if (v.startsWith('equip_')) {
                     const k = v.replace('equip_', '');
-                    if (ud.ownedTools.includes(k)) {
-                        ud.equippedTool = k;
-                        msg = `✅ **${SHOP_TOOLS[k].name}** di-equip!`;
-                    }
+                    if (ud.ownedTools.includes(k)) { ud.equippedTool = k; msg = `✅ **${SHOP_TOOLS[k].name}** di-equip!`; }
                 }
                 db.saveUser(ud);
                 await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
@@ -1887,14 +1683,12 @@ client.on('interactionCreate', async interaction => {
             if (interaction.customId === 'main_menu_select') {
                 let ud = userCache.get(userId);
                 if (!ud) { ud = loadUser(userId, interaction.user.username); userCache.set(userId, ud); }
-
                 if (autoFarmIntervals.has(userId)) {
                     stopAutoFarm(userId);
                     ud.autoFarm = false;
                     ud.lastBreak = 'Auto Farm dimatikan (interaksi lain).';
                     db.saveUser(ud);
                 }
-
                 const v = interaction.values[0];
                 const viewMap = {
                     'menu_shop': 'shop',
@@ -1904,29 +1698,23 @@ client.on('interactionCreate', async interaction => {
                     'menu_skills': 'skills',
                     'menu_tools': 'tools'
                 };
-
                 if (viewMap[v]) {
                     ud.currentView = viewMap[v];
-                    // Reset page ke default
                     if (viewMap[v] === 'shop') ud._shopBlocksPage = 'low';
                     if (viewMap[v] === 'change_block') ud._changeBlockPage = 'low';
                 }
-
                 await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
                 activeMessages.set(userId, interaction.message);
                 return;
             }
-
             return;
         }
 
         // ==========================================
-        // MODAL SUBMIT
+        // MODAL SUBMIT — BUY BLOCK PAKAI WL
         // ==========================================
         if (interaction.isModalSubmit()) {
             const userId = interaction.user.id;
-
-            // ===== ANTI-DUPE LOCK =====
             if (!lockUser(userId, 2000)) {
                 return interaction.reply({ content: '⏳ Tunggu sebentar...', ephemeral: true }).catch(() => {});
             }
@@ -1943,23 +1731,31 @@ client.on('interactionCreate', async interaction => {
             const qtyRaw = interaction.fields.getTextInputValue('quantity');
             const qty = parseInt(qtyRaw);
             if (isNaN(qty) || qty <= 0 || qty > MAX_CUSTOM_QTY) {
-                return interaction.reply({
-                    content: `❌ Jumlah tidak valid! 1 - ${MAX_CUSTOM_QTY.toLocaleString()}.`,
-                    ephemeral: true
-                });
+                return interaction.reply({ content: `❌ Jumlah tidak valid! 1 - ${MAX_CUSTOM_QTY.toLocaleString()}.`, ephemeral: true });
             }
 
             let resp = '';
+
             if (interaction.customId.startsWith('modal_buyblock_')) {
                 const k = interaction.customId.replace('modal_buyblock_', '');
                 const b = SHOP_BLOCKS[k];
                 if (!b) return interaction.reply({ content: '❌ Block invalid.', ephemeral: true });
                 if (isUnlimited(k)) return interaction.reply({ content: `♾️ Unlimited!`, ephemeral: true });
-                const tc = b.price * qty;
-                if (ud.gems < tc) return interaction.reply({ content: `❌ Gems kurang! Butuh ${tc.toLocaleString()}`, ephemeral: true });
-                ud.gems -= tc;
+
+                // ===== BAYAR PAKAI WL =====
+                const totalWL = b.priceWL * qty;
+
+                if (ud.locks.wl < totalWL) {
+                    const needGems = Math.ceil(totalWL * WL_TO_GEMS);
+                    return interaction.reply({
+                        content: `❌ WL kurang! Butuh **${formatWL(totalWL)} EMOJI.wl**(~{needGems.toLocaleString()} gems), kamu punya **${formatWL(ud.locks.wl)} ${EMOJI.wl}**`,
+                        ephemeral: true
+                    });
+                }
+
+                ud.locks.wl -= totalWL;
                 ud.blocks[k] = (ud.blocks[k] || 0) + qty;
-                resp = `✅ Beli **b.namex{qty.toLocaleString()}** (-${tc.toLocaleString()})`;
+                resp = `✅ Beli **b.namex{qty.toLocaleString()}**\n> Biaya: **${formatWL(totalWL)} ${EMOJI.wl}**\n> Sisa WL: ${formatWL(ud.locks.wl)}`;
             }
             else if (interaction.customId.startsWith('modal_buylock_')) {
                 const k = interaction.customId.replace('modal_buylock_', '');
@@ -1970,7 +1766,7 @@ client.on('interactionCreate', async interaction => {
                 ud.gems -= tc;
                 ud.locks[k] += qty;
                 db.saveUser(ud);
-                resp = `✅ Beli **l.namex{qty.toLocaleString()}**\n> WL ${ud.locks.wl} | DL ${ud.locks.dl} | BGL ${ud.locks.bgl} | BGLB ${ud.locks.bglb}`;
+                resp = `✅ Beli **l.namex{qty.toLocaleString()}**\n> WL ${formatWL(ud.locks.wl)} | DL ${formatWL(ud.locks.dl)} | BGL ${formatWL(ud.locks.bgl)} | BGLB ${formatWL(ud.locks.bglb)}`;
             }
 
             db.saveUser(ud);
@@ -1987,25 +1783,16 @@ client.on('interactionCreate', async interaction => {
         const id = interaction.customId;
         const userId = interaction.user.id;
 
-        // ===== AFK ONLINE BUTTON =====
         if (id.startsWith('afk_online_')) {
             const tu = id.replace('afk_online_', '');
-            if (interaction.user.id !== tu) {
-                return interaction.reply({ content: '❌ Tombol ini bukan untuk kamu.', ephemeral: true });
-            }
+            if (interaction.user.id !== tu) return interaction.reply({ content: '❌ Tombol ini bukan untuk kamu.', ephemeral: true });
             const t = afkCheckTimers.get(userId);
             if (t && t.timeoutTimer) clearTimeout(t.timeoutTimer);
             const cfg = db.getAfkCheckConfig(interaction.guildId);
             try {
                 await interaction.update({
-                    embeds: [new EmbedBuilder()
-                        .setColor('#57F287')
-                        .setTitle('✅ Online')
-                        .setDescription(
-                            `Terima kasih <@${userId}>!\n\n` +
-                            `> Auto Farm tetap jalan.\n` +
-                            `> Cek berikutnya **${cfg.intervalMinutes} menit**.`
-                        ).setTimestamp()],
+                    embeds: [new EmbedBuilder().setColor('#57F287').setTitle('✅ Online')
+                        .setDescription(`Terima kasih <@${userId}>!\n\n> Auto Farm tetap jalan.\n> Cek berikutnya **${cfg.intervalMinutes} menit**.`).setTimestamp()],
                     components: []
                 });
             } catch {}
@@ -2031,7 +1818,7 @@ client.on('interactionCreate', async interaction => {
 
         let eph = null, err = false;
 
-        // ===== START FARMING =====
+        // START FARMING
         if (id === 'start_farming') {
             if (!interaction.guild) return interaction.reply({ content: '❌ Hanya di server.', ephemeral: true });
             await interaction.deferReply({ ephemeral: true });
@@ -2066,14 +1853,8 @@ client.on('interactionCreate', async interaction => {
                         if (thread && thread.parentId === interaction.channelId) {
                             if (thread.archived) try { await thread.setArchived(false); } catch {}
                             db.setUserThread(interaction.guildId, userId, thread.id, interaction.channelId);
-                        } else {
-                            thread = null;
-                            userThreads.delete(userId);
-                        }
-                    } catch {
-                        thread = null;
-                        userThreads.delete(userId);
-                    }
+                        } else { thread = null; userThreads.delete(userId); }
+                    } catch { thread = null; userThreads.delete(userId); }
                 }
             }
 
@@ -2087,9 +1868,7 @@ client.on('interactionCreate', async interaction => {
                         await em.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
                         valid = true;
                     } catch { activeMessages.delete(userId); }
-                } else if (em) {
-                    await invalidateOldPanel(userId, 'Panel lama dipindah ke thread baru.');
-                }
+                } else if (em) { await invalidateOldPanel(userId, 'Panel lama dipindah ke thread baru.'); }
                 if (!valid) {
                     ud.currentView = 'main';
                     const m = await thread.send({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
@@ -2100,36 +1879,29 @@ client.on('interactionCreate', async interaction => {
 
             try {
                 thread = await interaction.channel.threads.create({
-                    name: `🌱 ${interaction.user.username}`,
-                    autoArchiveDuration: 1440,
-                    type: ChannelType.PrivateThread,
-                    reason: `Farming ${interaction.user.username}`
+                    name: `🌱 ${interaction.user.username}`, autoArchiveDuration: 1440,
+                    type: ChannelType.PrivateThread, reason: `Farming ${interaction.user.username}`
                 });
                 try { await thread.members.add(userId); } catch {}
             } catch (e) {
                 try {
                     thread = await interaction.channel.threads.create({
-                        name: `🌱 ${interaction.user.username}`,
-                        autoArchiveDuration: 1440,
-                        type: ChannelType.PublicThread,
-                        reason: `Farming ${interaction.user.username}`
+                        name: `🌱 ${interaction.user.username}`, autoArchiveDuration: 1440,
+                        type: ChannelType.PublicThread, reason: `Farming ${interaction.user.username}`
                     });
-                } catch (e2) {
-                    return interaction.editReply({ content: `❌ Gagal buat thread: ${e2.message}` });
-                }
+                } catch (e2) { return interaction.editReply({ content: `❌ Gagal buat thread: ${e2.message}` }); }
             }
 
             userThreads.set(userId, thread.id);
             db.setUserThread(interaction.guildId, userId, thread.id, interaction.channelId);
             await invalidateOldPanel(userId, 'Panel lama dipindah ke thread baru.');
-
             ud.currentView = 'main';
             const m = await thread.send({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
             activeMessages.set(userId, m);
             return interaction.editReply({ content: `✅ Thread dibuat: ${thread}` });
         }
 
-        // ===== GACHA ROLL =====
+        // GACHA ROLL
         if (id === 'gacha_roll_1' || id === 'gacha_roll_10') {
             if (!lockUser(userId, 2000)) {
                 return interaction.reply({ content: '⏳ Tunggu sebentar...', ephemeral: true }).catch(() => {});
@@ -2142,18 +1914,11 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: `❌ GBC kurang! Butuh **${rolls}** EMOJI.gbc,kamupunya**{gbcOwned}**`, ephemeral: true });
             }
 
-            // Kurangi GBC dulu (atomic)
             ud.items.gbc -= rolls;
-
             const results = [];
-            for (let i = 0; i < rolls; i++) {
-                const r = rollGacha(ud);
-                results.push(r);
-            }
-
+            for (let i = 0; i < rolls; i++) results.push(rollGacha(ud));
             db.saveUser(ud);
 
-            // Build result embed
             const lines = results.map((r, i) => {
                 const mark = r.type === 'gang' ? '🎉 ' : (r.type === 'ancesred' ? '🔴 ' : '');
                 return `**${i + 1}.** mark{r.label}\n> ${r.extra}`;
@@ -2165,10 +1930,7 @@ client.on('interactionCreate', async interaction => {
                 .setDescription(lines.join('\n\n'))
                 .addFields({
                     name: '📊 Ringkasan',
-                    value:
-                        `${EMOJI.gbc} **GBC tersisa:** ${ud.items.gbc}\n` +
-                        `🎯 **Total roll:** ${ud.totalGachaRolls}\n` +
-                        `${GANG.emoji} **Gang kamu:** ud.items.gang||0/{GANG.maxCount}`
+                    value: `${EMOJI.gbc} **GBC tersisa:** ${ud.items.gbc}\n🎯 **Total roll:** ${ud.totalGachaRolls}\n${GANG.emoji} **Gang kamu:** ud.items.gang||0/{GANG.maxCount}`
                 })
                 .setFooter({ text: `Roll dari ${interaction.user.username}` })
                 .setTimestamp();
@@ -2178,7 +1940,6 @@ client.on('interactionCreate', async interaction => {
                 activeMessages.set(userId, interaction.message);
             } catch {}
 
-            // Update panel lagi setelah 3 detik (balik ke gacha view)
             setTimeout(async () => {
                 try {
                     ud.currentView = 'gacha';
@@ -2191,38 +1952,24 @@ client.on('interactionCreate', async interaction => {
             return;
         }
 
-        // ===== UPGRADE ANCES RED =====
+        // UPGRADE ANCES RED
         if (id === 'upgrade_ancesred') {
             if (!lockUser(userId, 2000)) {
                 return interaction.reply({ content: '⏳ Tunggu sebentar...', ephemeral: true }).catch(() => {});
             }
 
             const currentLevel = ud.items.ancesRedLevel || 0;
-            if (currentLevel >= ANCES_RED.maxLevel) {
-                return interaction.reply({ content: `❌ Ances Red sudah MAX!`, ephemeral: true });
-            }
+            if (currentLevel >= ANCES_RED.maxLevel) return interaction.reply({ content: `❌ Ances Red sudah MAX!`, ephemeral: true });
 
             const cost = ANCES_RED.costs[currentLevel];
             let canAfford = true;
             let missing = '';
+            if (cost.gems > 0 && ud.gems < cost.gems) { canAfford = false; missing = `Butuh **${cost.gems.toLocaleString()}** ${EMOJI.gems}`; }
+            if (cost.bgl > 0 && ud.locks.bgl < cost.bgl) { canAfford = false; missing = `Butuh **${cost.bgl}** ${EMOJI.bgl}`; }
+            if (!canAfford) return interaction.reply({ content: `❌ Tidak cukup! ${missing}`, ephemeral: true });
 
-            if (cost.gems > 0 && ud.gems < cost.gems) {
-                canAfford = false;
-                missing = `Butuh **${cost.gems.toLocaleString()}** ${EMOJI.gems}`;
-            }
-            if (cost.bgl > 0 && ud.locks.bgl < cost.bgl) {
-                canAfford = false;
-                missing = `Butuh **${cost.bgl}** ${EMOJI.bgl}`;
-            }
-
-            if (!canAfford) {
-                return interaction.reply({ content: `❌ Tidak cukup! ${missing}`, ephemeral: true });
-            }
-
-            // Charge
             if (cost.gems > 0) ud.gems -= cost.gems;
             if (cost.bgl > 0) ud.locks.bgl -= cost.bgl;
-
             ud.items.ancesRedLevel = currentLevel + 1;
             db.saveUser(ud);
 
@@ -2234,68 +1981,28 @@ client.on('interactionCreate', async interaction => {
             activeMessages.set(userId, interaction.message);
 
             return interaction.followUp({
-                content:
-                    `✅ ${ANCES_RED.emoji} **Ances Red** upgraded!\n` +
-                    `> Lv.**currentLevel**→Lv.**{ud.items.ancesRedLevel}**\n` +
-                    `> Bonus sekarang: **+${newBonus}%** Gems\n` +
-                    `> Total Boost: **+${boostPercent}%** Gems`,
+                content: `✅ ${ANCES_RED.emoji} **Ances Red** upgraded!\n> Lv.**${currentLevel}** → Lv.**${ud.items.ancesRedLevel}**\n> Bonus sekarang: **+${newBonus}%** Gems\n> Total Boost: **+${boostPercent}%** Gems`,
                 ephemeral: true
             });
         }
 
-        // ===== SHOP BLOCKS PAGE NAV =====
-        if (id === 'shop_blocks_page_low') {
-            ud._shopBlocksPage = 'low';
-            ud.currentView = 'shop_blocks';
-            await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
-            activeMessages.set(userId, interaction.message);
-            return;
-        }
-        if (id === 'shop_blocks_page_pog') {
-            ud._shopBlocksPage = 'pog';
-            ud.currentView = 'shop_blocks';
-            await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
-            activeMessages.set(userId, interaction.message);
-            return;
-        }
-        if (id === 'shop_blocks_page_high') {
-            ud._shopBlocksPage = 'high';
-            ud.currentView = 'shop_blocks';
-            await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
-            activeMessages.set(userId, interaction.message);
-            return;
-        }
+        // SHOP BLOCKS PAGE
+        if (id === 'shop_blocks_page_low') { ud._shopBlocksPage = 'low'; ud.currentView = 'shop_blocks'; await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); activeMessages.set(userId, interaction.message); return; }
+        if (id === 'shop_blocks_page_pog') { ud._shopBlocksPage = 'pog'; ud.currentView = 'shop_blocks'; await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); activeMessages.set(userId, interaction.message); return; }
+        if (id === 'shop_blocks_page_high') { ud._shopBlocksPage = 'high'; ud.currentView = 'shop_blocks'; await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); activeMessages.set(userId, interaction.message); return; }
 
-        // ===== CHANGE BLOCK PAGE NAV =====
-        if (id === 'change_block_page_low') {
-            ud._changeBlockPage = 'low';
-            ud.currentView = 'change_block';
-            await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
-            activeMessages.set(userId, interaction.message);
-            return;
-        }
-        if (id === 'change_block_page_pog') {
-            ud._changeBlockPage = 'pog';
-            ud.currentView = 'change_block';
-            await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
-            activeMessages.set(userId, interaction.message);
-            return;
-        }
-        if (id === 'change_block_page_high') {
-            ud._changeBlockPage = 'high';
-            ud.currentView = 'change_block';
-            await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
-            activeMessages.set(userId, interaction.message);
-            return;
-        }
+        // CHANGE BLOCK PAGE
+        if (id === 'change_block_page_low') { ud._changeBlockPage = 'low'; ud.currentView = 'change_block'; await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); activeMessages.set(userId, interaction.message); return; }
+        if (id === 'change_block_page_pog') { ud._changeBlockPage = 'pog'; ud.currentView = 'change_block'; await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); activeMessages.set(userId, interaction.message); return; }
+        if (id === 'change_block_page_high') { ud._changeBlockPage = 'high'; ud.currentView = 'change_block'; await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); activeMessages.set(userId, interaction.message); return; }
 
-        // ===== CUSTOM BUY =====
+        // CUSTOM BUY
         if (id.startsWith('customblock_')) {
             const k = id.replace('customblock_', '');
             const b = SHOP_BLOCKS[k];
             if (!b) return interaction.reply({ content: '❌ Block invalid.', ephemeral: true });
             if (isUnlimited(k)) return interaction.reply({ content: `♾️ Unlimited!`, ephemeral: true });
-            return interaction.showModal(buildBuyModal(`Beli ${b.name}`, `modal_buyblock_${k}`, `Harga: ${b.price.toLocaleString()}/block`));
+            return interaction.showModal(buildBuyModal(`Beli ${b.name}`, `modal_buyblock_${k}`, `Harga: ${formatWL(b.priceWL)} WL/block`));
         }
         if (id.startsWith('customlock_')) {
             const k = id.replace('customlock_', '');
@@ -2304,47 +2011,21 @@ client.on('interactionCreate', async interaction => {
             return interaction.showModal(buildBuyModal(`Beli ${l.name}`, `modal_buylock_${k}`, `Harga: ${l.price.toLocaleString()}/lock`));
         }
 
-        // ===== NAVIGASI =====
-        if (id === 'nav_main') {
-            ud.currentView = 'main';
-        }
-        else if (id === 'nav_shop') {
-            ud.currentView = 'shop';
-        }
-        else if (id === 'nav_shop_tools') {
-            ud.currentView = 'shop_tools';
-        }
-        else if (id === 'nav_shop_blocks') {
-            ud.currentView = 'shop_blocks';
-            if (!ud._shopBlocksPage) ud._shopBlocksPage = 'low';
-        }
-        else if (id === 'nav_shop_items') {
-            ud.currentView = 'shop_items';
-        }
-        else if (id === 'nav_shop_locks') {
-            ud.currentView = 'shop_locks';
-        }
-        else if (id === 'nav_change_block') {
-            ud.currentView = 'change_block';
-            if (!ud._changeBlockPage) ud._changeBlockPage = 'low';
-        }
-        else if (id === 'nav_skills') {
-            ud.currentView = 'skills';
-        }
-        else if (id === 'nav_items') {
-            ud.currentView = 'items';
-        }
-        else if (id === 'nav_tools') {
-            ud.currentView = 'tools';
-        }
-        else if (id === 'nav_profile') {
-            ud.currentView = 'profile';
-        }
-        else if (id === 'nav_event') {
-            ud.currentView = 'event';
-        }
+        // NAVIGASI
+        if (id === 'nav_main') ud.currentView = 'main';
+        else if (id === 'nav_shop') ud.currentView = 'shop';
+        else if (id === 'nav_shop_tools') ud.currentView = 'shop_tools';
+        else if (id === 'nav_shop_blocks') { ud.currentView = 'shop_blocks'; if (!ud._shopBlocksPage) ud._shopBlocksPage = 'low'; }
+        else if (id === 'nav_shop_items') ud.currentView = 'shop_items';
+        else if (id === 'nav_shop_locks') ud.currentView = 'shop_locks';
+        else if (id === 'nav_change_block') { ud.currentView = 'change_block'; if (!ud._changeBlockPage) ud._changeBlockPage = 'low'; }
+        else if (id === 'nav_skills') ud.currentView = 'skills';
+        else if (id === 'nav_items') ud.currentView = 'items';
+        else if (id === 'nav_tools') ud.currentView = 'tools';
+        else if (id === 'nav_profile') ud.currentView = 'profile';
+        else if (id === 'nav_event') ud.currentView = 'event';
 
-        // ===== TOGGLE AUTO FARM =====
+        // TOGGLE AUTO
         else if (id === 'btn_toggle_auto') {
             const running = autoFarmIntervals.has(userId);
             if (running) {
@@ -2354,9 +2035,7 @@ client.on('interactionCreate', async interaction => {
                 console.log(`⏹️ Auto Farm OFF (${interaction.user.username})`);
             } else {
                 if (getTotalBlocks(ud) <= 0) {
-                    eph = '❌ Semua block habis!';
-                    err = true;
-                    ud.autoFarm = false;
+                    eph = '❌ Semua block habis!'; err = true; ud.autoFarm = false;
                 } else {
                     ud.autoFarm = true;
                     ud.lastBreak = 'Auto Farm aktif!';
@@ -2368,19 +2047,17 @@ client.on('interactionCreate', async interaction => {
             db.saveUser(ud);
         }
 
-        // ===== MANUAL FARM =====
+        // MANUAL FARM
         else if (id === 'btn_farm') {
-            if (getTotalBlocks(ud) <= 0) {
-                eph = '❌ Semua block habis!';
-                err = true;
-            } else {
+            if (getTotalBlocks(ud) <= 0) { eph = '❌ Semua block habis!'; err = true; }
+            else {
                 const r = doBreak(ud);
                 if (r && !r.switched) ud.lastBreak = formatBreakLog(r, 'Manual');
                 db.saveUser(ud);
             }
         }
 
-        // ===== BELI TOOL =====
+        // BELI TOOL
         else if (id.startsWith('buy_') && SHOP_TOOLS[id.slice(4)]) {
             if (!lockUser(userId, 1000)) return;
             const k = id.slice(4);
@@ -2390,7 +2067,7 @@ client.on('interactionCreate', async interaction => {
             else { ud.gems -= t.price; ud.ownedTools.push(k); db.saveUser(ud); eph = `✅ Beli **${t.name}**!`; }
         }
 
-        // ===== SELECT BLOCK =====
+        // SELECT BLOCK
         else if (id.startsWith('selectblock_')) {
             const k = id.slice(12);
             if (!SHOP_BLOCKS[k]) { eph = '❌ Block invalid.'; err = true; }
@@ -2398,7 +2075,7 @@ client.on('interactionCreate', async interaction => {
             else { ud.selectedBlock = k; db.saveUser(ud); eph = `✅ Pakai **${SHOP_BLOCKS[k].name}**!`; }
         }
 
-        // ===== BELI ITEM =====
+        // BELI ITEM
         else if (id.startsWith('buy_') && SHOP_ITEMS[id.slice(4)]) {
             if (!lockUser(userId, 1000)) return;
             const k = id.slice(4);
@@ -2413,54 +2090,27 @@ client.on('interactionCreate', async interaction => {
             }
         }
 
-        // ===== PAKAI ITEM =====
+        // PAKAI ITEM
         else if (id.startsWith('use_')) {
             if (!lockUser(userId, 1000)) return;
             const k = id.slice(4);
             const item = SHOP_ITEMS[k];
-
             if (!item) { eph = '❌ Item invalid.'; err = true; }
             else if (!ud.items[k] || ud.items[k] <= 0) { eph = `❌ Tidak punya item.emoji**{item.name}**!`; err = true; }
             else {
                 ud.items[k]--;
-
-                if (k === 'arroz') {
-                    ud.activeBuffs.arroz = Date.now() + (item.duration * 1000);
-                    eph = `✅ 🍗 **Arroz Con Pollo** aktif! x2 Gems selama ${item.duration}s`;
-                }
-                else if (k === 'clover') {
-                    ud.activeBuffs.clover = Date.now() + (item.duration * 1000);
-                    eph = `✅ 🍀 **Lucky Clover** aktif! x2 XP selama ${item.duration}s`;
-                }
-                else if (k === 'timewarp') {
-                    ud.activeBuffs.timewarp = Date.now() + (item.duration * 1000);
-                    eph = `✅ ⏳ **Time Warp** aktif! Auto Farm 2x lebih cepat selama ${item.duration}s\n> ⚡ Interval sekarang: **${(getAutoInterval(ud) / 1000).toFixed(1)}s**`;
-                }
-                else if (k === 'gempack') {
-                    ud.gems += item.amount;
-                    eph = `✅ 💎 **Gem Pack** dibuka! **+${item.amount.toLocaleString()} Gems**`;
-                }
-                else if (k === 'xpscroll') {
-                    const beforeLvl = ud.level;
-                    ud.xp += item.amount;
-                    const lvUp = checkLevelUp(ud);
-                    eph = `✅ 📜 **XP Scroll** dibuka! **+${item.amount.toLocaleString()} XP**`;
-                    if (lvUp > 0) eph += `\n> 🎉 **LEVEL UP! ${beforeLvl} → ud.level**(+{lvUp} SP)`;
-                }
-                else if (k === 'bomb') {
-                    ud.blocks.pog = (ud.blocks.pog || 0) + item.amount;
-                    eph = `✅ 💣 **Block Bomb** meledak! **+${item.amount} Pot O' Gems** ke inventory`;
-                }
-
-                if (item.category === 'instant') {
-                    ud.currentView = 'main';
-                }
-
+                if (k === 'arroz') { ud.activeBuffs.arroz = Date.now() + (item.duration * 1000); eph = `✅ 🍗 **Arroz** aktif! x2 Gems selama ${item.duration}s`; }
+                else if (k === 'clover') { ud.activeBuffs.clover = Date.now() + (item.duration * 1000); eph = `✅ 🍀 **Clover** aktif! x2 XP selama ${item.duration}s`; }
+                else if (k === 'timewarp') { ud.activeBuffs.timewarp = Date.now() + (item.duration * 1000); eph = `✅ ⏳ **Time Warp** aktif! Auto Farm 2x lebih cepat ${item.duration}s\n> ⚡ Interval: **${(getAutoInterval(ud) / 1000).toFixed(1)}s**`; }
+                else if (k === 'gempack') { ud.gems += item.amount; eph = `✅ 💎 **Gem Pack** dibuka! **+${item.amount.toLocaleString()} Gems**`; }
+                else if (k === 'xpscroll') { const bl = ud.level; ud.xp += item.amount; const lv = checkLevelUp(ud); eph = `✅ 📜 **XP Scroll** dibuka! **+${item.amount.toLocaleString()} XP**`; if (lv > 0) eph += `\n> 🎉 **LEVEL UP! ${bl} → ud.level**(+{lv} SP)`; }
+                else if (k === 'bomb') { ud.blocks.pog = (ud.blocks.pog || 0) + item.amount; eph = `✅ 💣 **Block Bomb** meledak! **+${item.amount} POG**`; }
+                if (item.category === 'instant') ud.currentView = 'main';
                 db.saveUser(ud);
             }
         }
 
-        // ===== EQUIP TOOL =====
+        // EQUIP TOOL
         else if (id.startsWith('equip_')) {
             const k = id.slice(6);
             if (!ud.ownedTools.includes(k)) { eph = '❌ Tidak punya tool ini.'; err = true; }
@@ -2472,7 +2122,7 @@ client.on('interactionCreate', async interaction => {
             eph = '✅ Tool di-unequip.';
         }
 
-        // ===== UPGRADE SKILL =====
+        // UPGRADE SKILL
         else if (id.startsWith('up_') && id !== 'upgrade_ancesred') {
             if (!lockUser(userId, 1000)) return;
             const k = id.slice(3);
@@ -2487,9 +2137,7 @@ client.on('interactionCreate', async interaction => {
                 ud.skills[k]++;
                 db.saveUser(ud);
                 eph = `✅ s.emoji**{s.name}** → Lv.**ud.skills[k]/{s.maxLevel}** (-${cost} SP)`;
-                if (k === 'mining_speed') {
-                    eph += `\n> ⏱️ Interval: **${(getAutoInterval(ud) / 1000).toFixed(1)}s**`;
-                }
+                if (k === 'mining_speed') eph += `\n> ⏱️ Interval: **${(getAutoInterval(ud) / 1000).toFixed(1)}s**`;
             }
         }
 
@@ -2518,3 +2166,5 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+
+
