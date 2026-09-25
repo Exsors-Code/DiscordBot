@@ -42,6 +42,24 @@ db.exec(`
     )
 `);
 
+// ==========================================
+// MIGRATIONS — tambah kolom baru (aman dijalankan berkali-kali)
+// ==========================================
+function tryMigration(sql, label) {
+    try {
+        db.exec(sql);
+        console.log(`✅ Migration: ${label}`);
+    } catch (e) {
+        // sudah ada, skip
+    }
+}
+
+tryMigration(`ALTER TABLE users ADD COLUMN items_json TEXT DEFAULT '{}'`, 'kolom items_json');
+tryMigration(`ALTER TABLE users ADD COLUMN buff_timewarp INTEGER DEFAULT 0`, 'kolom buff_timewarp');
+
+// ==========================================
+// TABEL GUILD CONFIG
+// ==========================================
 db.exec(`
     CREATE TABLE IF NOT EXISTS guild_config (
         guildId TEXT PRIMARY KEY,
@@ -50,6 +68,10 @@ db.exec(`
         leaderboardMessageId TEXT
     )
 `);
+
+tryMigration(`ALTER TABLE guild_config ADD COLUMN afkCheckEnabled INTEGER DEFAULT 0`, 'kolom afkCheckEnabled');
+tryMigration(`ALTER TABLE guild_config ADD COLUMN afkCheckInterval INTEGER DEFAULT 20`, 'kolom afkCheckInterval');
+tryMigration(`ALTER TABLE guild_config ADD COLUMN afkCheckTimeout INTEGER DEFAULT 120`, 'kolom afkCheckTimeout');
 
 db.exec(`
     CREATE TABLE IF NOT EXISTS welcome_config (
@@ -161,9 +183,6 @@ db.exec(`
     )
 `);
 
-// ==========================================
-// 📢 UPDATE CONFIG & HISTORY
-// ==========================================
 db.exec(`
     CREATE TABLE IF NOT EXISTS update_config (
         guildId TEXT PRIMARY KEY,
@@ -172,10 +191,7 @@ db.exec(`
     )
 `);
 
-try {
-    db.exec(`ALTER TABLE update_config ADD COLUMN changelogMessageId TEXT`);
-    console.log('✅ Migration: kolom changelogMessageId ditambahkan');
-} catch (e) {}
+tryMigration(`ALTER TABLE update_config ADD COLUMN changelogMessageId TEXT`, 'update_config.changelogMessageId');
 
 db.exec(`
     CREATE TABLE IF NOT EXISTS update_history (
@@ -190,22 +206,6 @@ db.exec(`
     )
 `);
 
-// ==========================================
-// BARU — AFK CHECK CONFIG (tambahan kolom di guild_config)
-// ==========================================
-try {
-    db.exec(`ALTER TABLE guild_config ADD COLUMN afkCheckEnabled INTEGER DEFAULT 0`);
-    console.log('✅ Migration: kolom afkCheckEnabled ditambahkan');
-} catch (e) {}
-try {
-    db.exec(`ALTER TABLE guild_config ADD COLUMN afkCheckInterval INTEGER DEFAULT 20`);
-    console.log('✅ Migration: kolom afkCheckInterval ditambahkan');
-} catch (e) {}
-try {
-    db.exec(`ALTER TABLE guild_config ADD COLUMN afkCheckTimeout INTEGER DEFAULT 120`);
-    console.log('✅ Migration: kolom afkCheckTimeout ditambahkan');
-} catch (e) {}
-
 console.log('✅ Database SQLite siap!');
 
 // ==========================================
@@ -213,6 +213,9 @@ console.log('✅ Database SQLite siap!');
 // ==========================================
 function rowToUser(row) {
     if (!row) return null;
+    let extraItems = {};
+    try { extraItems = JSON.parse(row.items_json || '{}'); } catch (e) { extraItems = {}; }
+
     return {
         userId: row.userId, username: row.username,
         level: row.level, xp: row.xp, maxXp: row.maxXp, skillPoints: row.skillPoints,
@@ -226,8 +229,19 @@ function rowToUser(row) {
             lucky_find: row.skill_lucky_find, xp_boost: row.skill_xp_boost,
             inventory_master: row.skill_inventory_master
         },
-        items: { arroz: row.item_arroz, clover: row.item_clover },
-        activeBuffs: { arroz: row.buff_arroz, clover: row.buff_clover },
+        items: {
+            arroz: row.item_arroz,
+            clover: row.item_clover,
+            gempack: extraItems.gempack || 0,
+            xpscroll: extraItems.xpscroll || 0,
+            bomb: extraItems.bomb || 0,
+            timewarp: extraItems.timewarp || 0
+        },
+        activeBuffs: {
+            arroz: row.buff_arroz,
+            clover: row.buff_clover,
+            timewarp: row.buff_timewarp || 0
+        },
         locks: { wl: row.lock_wl, dl: row.lock_dl, bgl: row.lock_bgl, bglb: row.lock_bglb },
         autoFarm: row.autoFarm === 1,
         lastBreak: row.lastBreak,
@@ -259,11 +273,18 @@ function getUser(userId, username) {
 function saveUser(ud) {
     try {
         autoConvertLocks(ud);
+        const extraItems = {
+            gempack: ud.items.gempack || 0,
+            xpscroll: ud.items.xpscroll || 0,
+            bomb: ud.items.bomb || 0,
+            timewarp: ud.items.timewarp || 0
+        };
         db.prepare(`
             UPDATE users SET username = ?, level = ?, xp = ?, maxXp = ?, skillPoints = ?,
                 gems = ?, dirt = ?, pog = ?, selectedBlock = ?, ownedTools = ?, equippedTool = ?,
                 skill_mining_speed = ?, skill_gem_hunter = ?, skill_lucky_find = ?, skill_xp_boost = ?, skill_inventory_master = ?,
                 item_arroz = ?, item_clover = ?, buff_arroz = ?, buff_clover = ?,
+                items_json = ?, buff_timewarp = ?,
                 lock_wl = ?, lock_dl = ?, lock_bgl = ?, lock_bglb = ?,
                 autoFarm = ?, lastBreak = ?, event_name = ?, event_gemsMult = ?, event_blocksMult = ?
             WHERE userId = ?
@@ -273,6 +294,7 @@ function saveUser(ud) {
             ud.ownedTools.join(','), ud.equippedTool,
             ud.skills.mining_speed, ud.skills.gem_hunter, ud.skills.lucky_find, ud.skills.xp_boost, ud.skills.inventory_master,
             ud.items.arroz, ud.items.clover, ud.activeBuffs.arroz, ud.activeBuffs.clover,
+            JSON.stringify(extraItems), ud.activeBuffs.timewarp || 0,
             ud.locks.wl, ud.locks.dl, ud.locks.bgl, ud.locks.bglb,
             ud.autoFarm ? 1 : 0, ud.lastBreak, ud.event.name, ud.event.gemsMult, ud.event.blocksMult, ud.userId
         );
@@ -297,36 +319,21 @@ function updateLeaderboardMessage(g, m) { db.prepare('UPDATE guild_config SET le
 function getAllGuildConfigs() { return db.prepare('SELECT * FROM guild_config').all(); }
 function removeGuildConfig(g) { db.prepare('DELETE FROM guild_config WHERE guildId = ?').run(g); }
 
-// ==========================================
-// BARU — AFK CHECK CONFIG
-// ==========================================
+// ===== AFK CHECK CONFIG =====
 function getAfkCheckConfig(guildId) {
     const row = db.prepare('SELECT afkCheckEnabled, afkCheckInterval, afkCheckTimeout FROM guild_config WHERE guildId = ?').get(guildId);
-    if (!row) {
-        return { enabled: false, intervalMinutes: 20, timeoutSeconds: 120 };
-    }
+    if (!row) return { enabled: false, intervalMinutes: 20, timeoutSeconds: 120 };
     return {
         enabled: row.afkCheckEnabled === 1,
         intervalMinutes: row.afkCheckInterval || 20,
         timeoutSeconds: row.afkCheckTimeout || 120
     };
 }
-
 function setAfkCheckConfig(guildId, data) {
     const existing = db.prepare('SELECT guildId FROM guild_config WHERE guildId = ?').get(guildId);
-    if (!existing) {
-        db.prepare('INSERT INTO guild_config (guildId) VALUES (?)').run(guildId);
-    }
-    db.prepare(`
-        UPDATE guild_config 
-        SET afkCheckEnabled = ?, afkCheckInterval = ?, afkCheckTimeout = ?
-        WHERE guildId = ?
-    `).run(
-        data.enabled ? 1 : 0,
-        data.intervalMinutes || 20,
-        data.timeoutSeconds || 120,
-        guildId
-    );
+    if (!existing) db.prepare('INSERT INTO guild_config (guildId) VALUES (?)').run(guildId);
+    db.prepare(`UPDATE guild_config SET afkCheckEnabled = ?, afkCheckInterval = ?, afkCheckTimeout = ? WHERE guildId = ?`)
+        .run(data.enabled ? 1 : 0, data.intervalMinutes || 20, data.timeoutSeconds || 120, guildId);
 }
 
 function getWelcomeConfig(g) { return db.prepare('SELECT * FROM welcome_config WHERE guildId = ?').get(g) || null; }
@@ -446,9 +453,7 @@ function removeUserThread(guildId, userId) {
 // ==========================================
 // UPDATE CONFIG & HISTORY
 // ==========================================
-function getUpdateConfig(guildId) {
-    return db.prepare('SELECT * FROM update_config WHERE guildId = ?').get(guildId) || null;
-}
+function getUpdateConfig(guildId) { return db.prepare('SELECT * FROM update_config WHERE guildId = ?').get(guildId) || null; }
 function setUpdateConfig(guildId, data) {
     db.prepare(`INSERT INTO update_config (guildId, channelId, changelogMessageId)
         VALUES (?, ?, ?)
@@ -466,22 +471,16 @@ function getUpdateHistory(guildId, limit = 10) {
     return db.prepare('SELECT * FROM update_history WHERE guildId = ? ORDER BY timestamp DESC LIMIT ?').all(guildId, limit);
 }
 
-function getUpdateHistoryById(id) {
-    return db.prepare('SELECT * FROM update_history WHERE id = ?').get(id) || null;
-}
+function getUpdateHistoryById(id) { return db.prepare('SELECT * FROM update_history WHERE id = ?').get(id) || null; }
 function updateHistoryEntry(id, data) {
     db.prepare(`UPDATE update_history SET version = ?, title = ?, content = ?, type = ? WHERE id = ?`)
         .run(data.version, data.title, data.content, data.type, id);
 }
-function deleteHistoryEntry(id) {
-    db.prepare('DELETE FROM update_history WHERE id = ?').run(id);
-}
+function deleteHistoryEntry(id) { db.prepare('DELETE FROM update_history WHERE id = ?').run(id); }
 function deleteUpdateHistoryByVersion(guildId, version, title) {
     db.prepare('DELETE FROM update_history WHERE guildId = ? AND version = ? AND title = ?').run(guildId, version, title);
 }
-function clearUpdateHistory(guildId) {
-    db.prepare('DELETE FROM update_history WHERE guildId = ?').run(guildId);
-}
+function clearUpdateHistory(guildId) { db.prepare('DELETE FROM update_history WHERE guildId = ?').run(guildId); }
 
 module.exports = {
     connectDB, getUser, saveUser, getAllUsers, resetUser,
