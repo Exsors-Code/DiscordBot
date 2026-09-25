@@ -33,6 +33,9 @@ try {
     console.log(`✅ voice.js loaded — ${VOICE_COMMANDS.length} commands`);
 } catch (e) { console.error('❌ voice.js:', e.message); }
 
+// ==========================================
+// BASE COMMANDS
+// ==========================================
 const baseCommands = [
     new SlashCommandBuilder().setName('farming').setDescription('Membuka panel farming').toJSON(),
     new SlashCommandBuilder().setName('event').setDescription('Lihat event').toJSON(),
@@ -51,7 +54,17 @@ const baseCommands = [
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addUserOption(o => o.setName('player').setDescription('Player yang mau direset').setRequired(true)).toJSON(),
 
-    // AFK CHECK
+    // ===== /give =====
+    new SlashCommandBuilder()
+        .setName('give')
+        .setDescription('🎁 Beri item/gems/lock ke player (admin only)')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+        .addUserOption(o => o.setName('user').setDescription('Target user').setRequired(true))
+        .addStringOption(o => o.setName('item').setDescription('Item (ketik untuk cari)').setRequired(true).setAutocomplete(true))
+        .addIntegerOption(o => o.setName('amount').setDescription('Jumlah (default: 1)').setRequired(false).setMinValue(1).setMaxValue(1000000000))
+        .toJSON(),
+
+    // ===== /afkcheck =====
     new SlashCommandBuilder().setName('afkcheck').setDescription('⏰ Cek online otomatis saat Auto Farm aktif')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .addSubcommand(s => s
@@ -66,6 +79,9 @@ const baseCommands = [
         .toJSON()
 ];
 
+// ==========================================
+// GABUNG SEMUA
+// ==========================================
 const commands = [
     ...baseCommands,
     ...ADMIN_COMMANDS,
@@ -74,6 +90,9 @@ const commands = [
     ...VOICE_COMMANDS
 ];
 
+// ==========================================
+// ANTI-DUPLIKAT
+// ==========================================
 const seen = new Set();
 const duplicates = [];
 for (const cmd of commands) {
@@ -93,6 +112,9 @@ if (duplicates.length > 0) {
     process.exit(1);
 }
 
+// ==========================================
+// PRINT TREE
+// ==========================================
 function printCommandTree(cmd) {
     const subs = (cmd.options || []).filter(o => o.type === 1);
     const groups = (cmd.options || []).filter(o => o.type === 2);
@@ -110,6 +132,9 @@ function printCommandTree(cmd) {
     }
 }
 
+// ==========================================
+// DEPLOY
+// ==========================================
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
