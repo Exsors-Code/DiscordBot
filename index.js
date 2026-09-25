@@ -1199,3 +1199,710 @@ async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
         }
     } catch (err) { console.error(`❌ Setup guild ${guild.name}:`, err.message); }
 }
+
+// ==========================================
+// BOT READY
+// ==========================================
+client.once('ready', async () => {
+    console.log(`✅ Bot ${client.user.tag} siap!`);
+    console.log(`🌐 ${client.guilds.cache.size} server`);
+    await db.connectDB();
+
+    setInterval(() => {
+        try {
+            const src = path.join(__dirname, 'growexs.db');
+            const dst = path.join(__dirname, `backup_${Date.now()}.db`);
+            if (fs.existsSync(src)) {
+                fs.copyFileSync(src, dst);
+                console.log(`💾 Backup: ${path.basename(dst)}`);
+            }
+        } catch (e) {}
+    }, 6 * 60 * 60 * 1000);
+
+    const cfgs = db.getAllGuildConfigs();
+    for (const c of cfgs) {
+        const g = client.guilds.cache.get(c.guildId);
+        if (!g) continue;
+        console.log(`🔧 Setup: ${g.name}`);
+        await setupGuild(g, c.panelChannelId, c.leaderboardChannelId);
+    }
+
+    setInterval(refreshAllLeaderboards, LEADERBOARD_UPDATE_INTERVAL);
+});
+
+// ==========================================
+// EVENT LISTENERS
+// ==========================================
+client.on('guildCreate', g => console.log(`➕ Join: ${g.name} (${g.id})`));
+
+client.on('guildMemberAdd', async m => {
+    try { await handleMemberJoin(m); } catch (e) {}
+});
+
+client.on('messageCreate', async m => {
+    try {
+        await utility.runAutomod(m);
+        if (await utility.handleTagMessage(m)) return;
+    } catch (e) {}
+});
+
+client.on('messageReactionAdd', async (r, u) => {
+    try {
+        await utility.handleReactionAdd(r, u);
+        await utility.handleStarboard(r, u, true);
+    } catch (e) {}
+});
+
+client.on('messageReactionRemove', async (r, u) => {
+    try { await utility.handleReactionRemove(r, u); } catch (e) {}
+});
+
+client.on('voiceStateUpdate', async (oldState, newState) => {
+    try { await voiceMod.handleVoiceStateUpdate(client, oldState, newState); } catch (e) {}
+});
+
+client.on('channelDelete', async (channel) => {
+    try { await voiceMod.handleChannelDelete(client, channel); } catch (e) {}
+});
+
+// ==========================================
+// INTERACTION HANDLER
+// ==========================================
+client.on('interactionCreate', async interaction => {
+    try {
+        if (!checkOwnerOnly(interaction)) return blockNonOwner(interaction);
+        if (await updateMod.handleUpdateInteraction(interaction)) return;
+        if (await handleAdminInteraction(interaction)) return;
+        if (await utility.handleUtilityInteraction(interaction)) return;
+        if (await voiceMod.handleVoiceInteraction(interaction)) return;
+
+        const _u = interaction.user.id;
+        if (_u) userLastInteraction.set(_u, Date.now());
+
+        // ==========================================
+        // SLASH COMMANDS
+        // ==========================================
+        if (interaction.isChatInputCommand()) {
+            const userId = interaction.user.id;
+
+            // ===== /afkcheck =====
+            if (interaction.commandName === 'afkcheck') {
+                if (!interaction.guild) return interaction.reply({ content: '❌ Hanya di server.', ephemeral: true });
+                await interaction.deferReply({ ephemeral: true });
+                const sub = interaction.options.getSubcommand();
+
+                if (sub === 'set') {
+                    const interval = interaction.options.getInteger('interval');
+                    const timeout = interaction.options.getInteger('timeout');
+                    const enabled = interaction.options.getBoolean('enabled');
+                    const finalEnabled = enabled === null ? true : enabled;
+                    db.setAfkCheckConfig(interaction.guildId, {
+                        enabled: finalEnabled,
+                        intervalMinutes: interval,
+                        timeoutSeconds: timeout
+                    });
+                    return interaction.editReply({
+                        content:
+                            `✅ **AFK Check diset!**\n\n` +
+                            `> 🔄 Interval: **${interval} menit**\n` +
+                            `> ⏱️ Timeout: **${timeout} detik**\n` +
+                            `> 🟢 Status: ${finalEnabled ? '**Aktif**' : '**Nonaktif**'}`
+                    });
+                }
+                if (sub === 'status') {
+                    const c = db.getAfkCheckConfig(interaction.guildId);
+                    return interaction.editReply({
+                        embeds: [new EmbedBuilder()
+                            .setColor(c.enabled ? '#57F287' : '#ED4245')
+                            .setTitle('⏰ AFK Check Config')
+                            .addFields(
+                                { name: 'Status', value: c.enabled ? '✅ Aktif' : '❌ Nonaktif', inline: true },
+                                { name: 'Interval', value: `${c.intervalMinutes} menit`, inline: true },
+                                { name: 'Timeout', value: `${c.timeoutSeconds} detik`, inline: true }
+                            )]
+                    });
+                }
+                if (sub === 'disable') {
+                    const c = db.getAfkCheckConfig(interaction.guildId);
+                    db.setAfkCheckConfig(interaction.guildId, { ...c, enabled: false });
+                    return interaction.editReply({ content: '❌ **AFK Check dimatikan.**' });
+                }
+                return;
+            }
+
+            // ===== /setup =====
+            if (interaction.commandName === 'setup') {
+                if (!interaction.guild) return interaction.reply({ content: '❌ Hanya di server.', ephemeral: true });
+                await interaction.deferReply({ ephemeral: true });
+                const p = interaction.options.getChannel('panel');
+                const l = interaction.options.getChannel('leaderboard');
+                db.setGuildConfig(interaction.guildId, p.id, l.id);
+                await setupGuild(interaction.guild, p.id, l.id);
+                return interaction.editReply({ content: `✅ Setup selesai!\n> Panel: ${p}\n> Leaderboard: ${l}` });
+            }
+
+            // ===== /unsetup =====
+            if (interaction.commandName === 'unsetup') {
+                if (!interaction.guild) return interaction.reply({ content: '❌ Hanya di server.', ephemeral: true });
+                db.removeGuildConfig(interaction.guildId);
+                guildLeaderboards.delete(interaction.guildId);
+                guildMemberCache.delete(interaction.guildId);
+                return interaction.reply({ content: `✅ Config dihapus.`, ephemeral: true });
+            }
+
+            // ===== /resetplayer =====
+            if (interaction.commandName === 'resetplayer') {
+                await interaction.deferReply({ ephemeral: true });
+                const tu = interaction.options.getUser('player');
+                if (!tu) return interaction.editReply({ content: '❌ Player tidak valid.' });
+                const m = interaction.guild
+                    ? await interaction.guild.members.fetch(userId).catch(() => null)
+                    : null;
+                if (!isEventManager(m)) {
+                    return interaction.editReply({ content: `🔒 Hanya Event Manager / Admin.` });
+                }
+                const ok = await realtimeResetPlayer(tu);
+                if (!ok) return interaction.editReply({ content: `⚠️ Player **${tu.username}** belum pernah main.` });
+                return interaction.editReply({ content: `✅ **Reset (REALTIME)!**\n\n> 👤 Player: **${tu.username}**` });
+            }
+
+            // ===== /farming =====
+            if (interaction.commandName === 'farming') {
+                await interaction.deferReply();
+                const ud = loadUser(userId, interaction.user.username);
+                if (autoFarmIntervals.has(userId) && !ud.autoFarm) ud.autoFarm = true;
+                userCache.set(userId, ud);
+                ud.currentView = 'main';
+
+                const em = activeMessages.get(userId);
+                if (em) {
+                    try {
+                        await em.fetch();
+                        await em.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+                        return interaction.editReply({ content: `⚠️ Kamu sudah punya panel aktif di <#${em.channelId}>.` });
+                    } catch { activeMessages.delete(userId); }
+                }
+
+                const dbt = db.getUserThread(interaction.guildId, userId);
+                if (dbt) {
+                    try {
+                        const t = await interaction.guild.channels.fetch(dbt.threadId);
+                        if (t && !t.archived) return interaction.editReply({ content: `⚠️ Kamu sudah punya thread: ${t}` });
+                    } catch { db.removeUserThread(interaction.guildId, userId); }
+                }
+
+                const msg = await interaction.editReply({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+                activeMessages.set(userId, msg);
+            }
+
+            // ===== /event =====
+            else if (interaction.commandName === 'event') {
+                const ud = loadUser(userId, interaction.user.username);
+                userCache.set(userId, ud);
+                await interaction.reply({ embeds: [eventEmbed(ud)], ephemeral: true });
+            }
+
+            // ===== /customevent =====
+            else if (interaction.commandName === 'customevent') {
+                await interaction.deferReply({ ephemeral: true });
+                try {
+                    const m = interaction.guild
+                        ? await interaction.guild.members.fetch(userId).catch(() => null)
+                        : null;
+                    if (!isEventManager(m)) {
+                        return interaction.editReply({ content: `🔒 Hanya Event Manager / Admin.` });
+                    }
+                    const ud = loadUser(userId, interaction.user.username);
+                    userCache.set(userId, ud);
+                    const gm = interaction.options.getInteger('gems');
+                    const bm = interaction.options.getInteger('blocks');
+                    ud.event.gemsMult = gm;
+                    ud.event.blocksMult = bm;
+                    ud.event.name = `Custom Event (Gems x${gm}, Blocks x${bm})`;
+                    db.saveUser(ud);
+                    const msg = activeMessages.get(userId);
+                    if (msg) { try { await msg.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); } catch {} }
+                    return interaction.editReply({ content: `✅ Event: Gems x${gm} | Blocks x${bm}` });
+                } catch (e) {
+                    return interaction.editReply({ content: `❌ Gagal: ${e.message}` }).catch(() => {});
+                }
+            }
+            return;
+        }
+
+        // ==========================================
+        // STRING SELECT MENU
+        // ==========================================
+        if (interaction.isStringSelectMenu()) {
+            const userId = interaction.user.id;
+
+            // ===== TOOL SELECT =====
+            if (interaction.customId === 'select_tool') {
+                let ud = userCache.get(userId);
+                if (!ud) { ud = loadUser(userId, interaction.user.username); userCache.set(userId, ud); }
+
+                if (autoFarmIntervals.has(userId)) {
+                    stopAutoFarm(userId);
+                    ud.autoFarm = false;
+                    ud.lastBreak = 'Auto Farm dimatikan (interaksi lain).';
+                    db.saveUser(ud);
+                }
+
+                const v = interaction.values[0];
+                let msg = '';
+                if (v === 'unequip') {
+                    ud.equippedTool = null;
+                    msg = '✅ Tool di-unequip.';
+                } else if (v.startsWith('equip_')) {
+                    const k = v.replace('equip_', '');
+                    if (ud.ownedTools.includes(k)) {
+                        ud.equippedTool = k;
+                        msg = `✅ **${SHOP_TOOLS[k].name}** di-equip!`;
+                    }
+                }
+                db.saveUser(ud);
+                await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+                activeMessages.set(userId, interaction.message);
+                try { await interaction.followUp({ content: msg, ephemeral: true }); } catch {}
+                return;
+            }
+
+            // ===== MAIN MENU SELECT =====
+            if (interaction.customId === 'main_menu_select') {
+                let ud = userCache.get(userId);
+                if (!ud) { ud = loadUser(userId, interaction.user.username); userCache.set(userId, ud); }
+
+                if (autoFarmIntervals.has(userId)) {
+                    stopAutoFarm(userId);
+                    ud.autoFarm = false;
+                    ud.lastBreak = 'Auto Farm dimatikan (interaksi lain).';
+                    db.saveUser(ud);
+                }
+
+                const v = interaction.values[0];
+                const viewMap = {
+                    'menu_shop': 'shop',
+                    'menu_items': 'items',
+                    'menu_profile': 'profile',
+                    'menu_skills': 'skills',
+                    'menu_tools': 'tools'
+                };
+
+                if (viewMap[v]) {
+                    ud.currentView = viewMap[v];
+                }
+
+                await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+                activeMessages.set(userId, interaction.message);
+                return;
+            }
+
+            return;
+        }
+
+        // ==========================================
+        // MODAL SUBMIT
+        // ==========================================
+        if (interaction.isModalSubmit()) {
+            const userId = interaction.user.id;
+            const ud = loadUser(userId, interaction.user.username);
+            userCache.set(userId, ud);
+
+            if (autoFarmIntervals.has(userId)) {
+                stopAutoFarm(userId);
+                ud.autoFarm = false;
+                ud.lastBreak = 'Auto Farm dimatikan (interaksi lain).';
+            }
+
+            const qtyRaw = interaction.fields.getTextInputValue('quantity');
+            const qty = parseInt(qtyRaw);
+            if (isNaN(qty) || qty <= 0 || qty > MAX_CUSTOM_QTY) {
+                return interaction.reply({
+                    content: `❌ Jumlah tidak valid! 1 - ${MAX_CUSTOM_QTY.toLocaleString()}.`,
+                    ephemeral: true
+                });
+            }
+
+            let resp = '';
+            if (interaction.customId.startsWith('modal_buyblock_')) {
+                const k = interaction.customId.replace('modal_buyblock_', '');
+                const b = SHOP_BLOCKS[k];
+                if (!b) return interaction.reply({ content: '❌ Block invalid.', ephemeral: true });
+                if (isUnlimited(k)) return interaction.reply({ content: `♾️ Unlimited!`, ephemeral: true });
+                const tc = b.price * qty;
+                if (ud.gems < tc) return interaction.reply({ content: `❌ Gems kurang! Butuh ${tc.toLocaleString()}`, ephemeral: true });
+                ud.gems -= tc;
+                ud.blocks[k] += qty;
+                resp = `✅ Beli **${b.name} x${qty.toLocaleString()}** (-${tc.toLocaleString()})`;
+            }
+            else if (interaction.customId.startsWith('modal_buylock_')) {
+                const k = interaction.customId.replace('modal_buylock_', '');
+                const l = SHOP_LOCKS[k];
+                if (!l) return interaction.reply({ content: '❌ Lock invalid.', ephemeral: true });
+                const tc = l.price * qty;
+                if (ud.gems < tc) return interaction.reply({ content: `❌ Gems kurang! Butuh ${tc.toLocaleString()}`, ephemeral: true });
+                ud.gems -= tc;
+                ud.locks[k] += qty;
+                db.saveUser(ud);
+                resp = `✅ Beli **${l.name} x${qty.toLocaleString()}**\n> WL ${ud.locks.wl} | DL ${ud.locks.dl} | BGL ${ud.locks.bgl} | BGLB ${ud.locks.bglb}`;
+            }
+
+            db.saveUser(ud);
+            const msg = activeMessages.get(userId);
+            if (msg) { try { await msg.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); } catch {} }
+            refreshAllLeaderboards();
+            return interaction.reply({ content: resp, ephemeral: true });
+        }
+
+        // ==========================================
+        // BUTTONS
+        // ==========================================
+        if (!interaction.isButton()) return;
+        const id = interaction.customId;
+        const userId = interaction.user.id;
+
+        // ===== AFK ONLINE BUTTON =====
+        if (id.startsWith('afk_online_')) {
+            const tu = id.replace('afk_online_', '');
+            if (interaction.user.id !== tu) {
+                return interaction.reply({ content: '❌ Tombol ini bukan untuk kamu.', ephemeral: true });
+            }
+            const t = afkCheckTimers.get(userId);
+            if (t && t.timeoutTimer) clearTimeout(t.timeoutTimer);
+            const cfg = db.getAfkCheckConfig(interaction.guildId);
+            try {
+                await interaction.update({
+                    embeds: [new EmbedBuilder()
+                        .setColor('#57F287')
+                        .setTitle('✅ Online')
+                        .setDescription(
+                            `Terima kasih <@${userId}>!\n\n` +
+                            `> Auto Farm tetap jalan.\n` +
+                            `> Cek berikutnya **${cfg.intervalMinutes} menit**.`
+                        ).setTimestamp()],
+                    components: []
+                });
+            } catch {}
+            scheduleAfkCheck(userId, interaction.guildId);
+            console.log(`⏰ [AFK] ${userId} konfirmasi online`);
+            return;
+        }
+
+        let ud = userCache.get(userId);
+        if (!ud) { ud = loadUser(userId, interaction.user.username); userCache.set(userId, ud); }
+        ud.username = interaction.user.username;
+
+        const isAuto = autoFarmIntervals.has(userId);
+        if (ud.autoFarm !== isAuto) ud.autoFarm = isAuto;
+
+        if (id !== 'btn_toggle_auto' && isAuto) {
+            stopAutoFarm(userId);
+            ud.autoFarm = false;
+            ud.lastBreak = 'Auto Farm dimatikan (interaksi lain).';
+            db.saveUser(ud);
+            console.log(`⏹️ Auto Farm OFF via "${id}" (${interaction.user.username})`);
+        }
+
+        let eph = null, err = false;
+
+        // ===== START FARMING =====
+        if (id === 'start_farming') {
+            if (!interaction.guild) return interaction.reply({ content: '❌ Hanya di server.', ephemeral: true });
+            await interaction.deferReply({ ephemeral: true });
+            const cfg = db.getGuildConfig(interaction.guildId);
+            if (!cfg) return interaction.editReply({ content: '❌ Server belum di-setup. Jalankan `/setup`.' });
+
+            let thread = null, src = null;
+            const dbt = db.getUserThread(interaction.guildId, userId);
+            if (dbt) {
+                try {
+                    thread = await interaction.guild.channels.fetch(dbt.threadId);
+                    if (thread && thread.parentId === interaction.channelId) {
+                        if (thread.archived) try { await thread.setArchived(false); } catch {}
+                        src = 'database';
+                        userThreads.set(userId, thread.id);
+                    } else {
+                        thread = null;
+                        db.removeUserThread(interaction.guildId, userId);
+                        userThreads.delete(userId);
+                    }
+                } catch {
+                    thread = null;
+                    db.removeUserThread(interaction.guildId, userId);
+                    userThreads.delete(userId);
+                }
+            }
+
+            if (!thread) {
+                const cid = userThreads.get(userId);
+                if (cid) {
+                    try {
+                        thread = await interaction.guild.channels.fetch(cid);
+                        if (thread && thread.parentId === interaction.channelId) {
+                            if (thread.archived) try { await thread.setArchived(false); } catch {}
+                            src = 'cache';
+                            db.setUserThread(interaction.guildId, userId, thread.id, interaction.channelId);
+                        } else {
+                            thread = null;
+                            userThreads.delete(userId);
+                        }
+                    } catch {
+                        thread = null;
+                        userThreads.delete(userId);
+                    }
+                }
+            }
+
+            if (thread) {
+                const em = activeMessages.get(userId);
+                let valid = false;
+                if (em && em.channelId === thread.id) {
+                    try {
+                        await em.fetch();
+                        ud.currentView = 'main';
+                        await em.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+                        valid = true;
+                    } catch { activeMessages.delete(userId); }
+                } else if (em) {
+                    await invalidateOldPanel(userId, 'Panel lama dipindah ke thread baru.');
+                }
+                if (!valid) {
+                    ud.currentView = 'main';
+                    const m = await thread.send({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+                    activeMessages.set(userId, m);
+                }
+                return interaction.editReply({ content: `✅ Kamu sudah punya thread: ${thread}` });
+            }
+
+            try {
+                thread = await interaction.channel.threads.create({
+                    name: `🌱 ${interaction.user.username}`,
+                    autoArchiveDuration: 1440,
+                    type: ChannelType.PrivateThread,
+                    reason: `Farming ${interaction.user.username}`
+                });
+                try { await thread.members.add(userId); } catch {}
+            } catch (e) {
+                try {
+                    thread = await interaction.channel.threads.create({
+                        name: `🌱 ${interaction.user.username}`,
+                        autoArchiveDuration: 1440,
+                        type: ChannelType.PublicThread,
+                        reason: `Farming ${interaction.user.username}`
+                    });
+                } catch (e2) {
+                    return interaction.editReply({ content: `❌ Gagal buat thread: ${e2.message}` });
+                }
+            }
+
+            userThreads.set(userId, thread.id);
+            db.setUserThread(interaction.guildId, userId, thread.id, interaction.channelId);
+            await invalidateOldPanel(userId, 'Panel lama dipindah ke thread baru.');
+
+            ud.currentView = 'main';
+            const m = await thread.send({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+            activeMessages.set(userId, m);
+            return interaction.editReply({ content: `✅ Thread dibuat: ${thread}` });
+        }
+
+        // ===== CUSTOM BUY =====
+        if (id.startsWith('customblock_')) {
+            const k = id.replace('customblock_', '');
+            const b = SHOP_BLOCKS[k];
+            if (!b) return interaction.reply({ content: '❌ Block invalid.', ephemeral: true });
+            if (isUnlimited(k)) return interaction.reply({ content: `♾️ Unlimited!`, ephemeral: true });
+            return interaction.showModal(buildBuyModal(`Beli ${b.name}`, `modal_buyblock_${k}`, `Harga: ${b.price.toLocaleString()}/block`));
+        }
+        if (id.startsWith('customlock_')) {
+            const k = id.replace('customlock_', '');
+            const l = SHOP_LOCKS[k];
+            if (!l) return interaction.reply({ content: '❌ Lock invalid.', ephemeral: true });
+            return interaction.showModal(buildBuyModal(`Beli ${l.name}`, `modal_buylock_${k}`, `Harga: ${l.price.toLocaleString()}/lock`));
+        }
+
+        // ===== NAVIGASI =====
+        if (id === 'nav_main') ud.currentView = 'main';
+        else if (id === 'nav_shop') ud.currentView = 'shop';
+        else if (id === 'nav_shop_tools') ud.currentView = 'shop_tools';
+        else if (id === 'nav_shop_blocks') ud.currentView = 'shop_blocks';
+        else if (id === 'nav_shop_items') ud.currentView = 'shop_items';
+        else if (id === 'nav_shop_locks') ud.currentView = 'shop_locks';
+        else if (id === 'nav_change_block') ud.currentView = 'change_block';
+        else if (id === 'nav_skills') ud.currentView = 'skills';
+        else if (id === 'nav_items') ud.currentView = 'items';
+        else if (id === 'nav_tools') ud.currentView = 'tools';
+        else if (id === 'nav_profile') ud.currentView = 'profile';
+        else if (id === 'nav_event') ud.currentView = 'event';
+
+        // ===== TOGGLE AUTO FARM =====
+        else if (id === 'btn_toggle_auto') {
+            const running = autoFarmIntervals.has(userId);
+            if (running) {
+                stopAutoFarm(userId);
+                ud.autoFarm = false;
+                ud.lastBreak = 'Auto Farm dimatikan.';
+                console.log(`⏹️ Auto Farm OFF (${interaction.user.username})`);
+            } else {
+                if (getTotalBlocks(ud) <= 0) {
+                    eph = '❌ Semua block habis!';
+                    err = true;
+                    ud.autoFarm = false;
+                } else {
+                    ud.autoFarm = true;
+                    ud.lastBreak = 'Auto Farm aktif!';
+                    startAutoFarm(userId);
+                    if (interaction.guildId) scheduleAfkCheck(userId, interaction.guildId);
+                    console.log(`▶️ Auto Farm ON (${interaction.user.username})`);
+                }
+            }
+            db.saveUser(ud);
+        }
+
+        // ===== MANUAL FARM =====
+        else if (id === 'btn_farm') {
+            if (getTotalBlocks(ud) <= 0) {
+                eph = '❌ Semua block habis!';
+                err = true;
+            } else {
+                const r = doBreak(ud);
+                if (r && !r.switched) ud.lastBreak = formatBreakLog(r, 'Manual');
+                db.saveUser(ud);
+            }
+        }
+
+        // ===== BELI TOOL =====
+        else if (id.startsWith('buy_') && SHOP_TOOLS[id.slice(4)]) {
+            const k = id.slice(4);
+            const t = SHOP_TOOLS[k];
+            if (ud.gems < t.price) { eph = `❌ Gems kurang! Butuh ${t.price.toLocaleString()}`; err = true; }
+            else if (ud.ownedTools.includes(k)) { eph = `❌ Kamu sudah punya **${t.name}**!`; err = true; }
+            else { ud.gems -= t.price; ud.ownedTools.push(k); db.saveUser(ud); eph = `✅ Beli **${t.name}**!`; }
+        }
+
+        // ===== SELECT BLOCK =====
+        else if (id.startsWith('selectblock_')) {
+            const k = id.slice(12);
+            if (!SHOP_BLOCKS[k]) { eph = '❌ Block invalid.'; err = true; }
+            else if (!isUnlimited(k) && ud.blocks[k] <= 0) { eph = `❌ Tidak punya **${SHOP_BLOCKS[k].name}**!`; err = true; }
+            else { ud.selectedBlock = k; db.saveUser(ud); eph = `✅ Pakai **${SHOP_BLOCKS[k].name}**!`; }
+        }
+
+        // ===== BELI ITEM (SEMUA ITEM) =====
+        else if (id.startsWith('buy_') && SHOP_ITEMS[id.slice(4)]) {
+            const k = id.slice(4);
+            const i = SHOP_ITEMS[k];
+            if (ud.gems < i.price) { eph = `❌ Gems kurang! Butuh ${i.price.toLocaleString()}`; err = true; }
+            else {
+                ud.gems -= i.price;
+                if (!ud.items[k]) ud.items[k] = 0;
+                ud.items[k]++;
+                db.saveUser(ud);
+                eph = `✅ Beli ${i.emoji} **${i.name}** ×1!`;
+            }
+        }
+
+        // ===== PAKAI ITEM =====
+        else if (id.startsWith('use_')) {
+            const k = id.slice(4);
+            const item = SHOP_ITEMS[k];
+
+            if (!item) { eph = '❌ Item invalid.'; err = true; }
+            else if (!ud.items[k] || ud.items[k] <= 0) { eph = `❌ Tidak punya ${item.emoji} **${item.name}**!`; err = true; }
+            else {
+                ud.items[k]--;
+
+                // ===== BUFF ITEMS =====
+                if (k === 'arroz') {
+                    ud.activeBuffs.arroz = Date.now() + (item.duration * 1000);
+                    eph = `✅ 🍗 **Arroz Con Pollo** aktif! x2 Gems selama ${item.duration}s`;
+                }
+                else if (k === 'clover') {
+                    ud.activeBuffs.clover = Date.now() + (item.duration * 1000);
+                    eph = `✅ 🍀 **Lucky Clover** aktif! x2 XP selama ${item.duration}s`;
+                }
+                else if (k === 'timewarp') {
+                    ud.activeBuffs.timewarp = Date.now() + (item.duration * 1000);
+                    eph = `✅ ⏳ **Time Warp** aktif! Auto Farm 2x lebih cepat selama ${item.duration}s\n> ⚡ Interval sekarang: **${(getAutoInterval(ud) / 1000).toFixed(1)}s**`;
+                }
+                // ===== INSTANT ITEMS =====
+                else if (k === 'gempack') {
+                    ud.gems += item.amount;
+                    eph = `✅ 💎 **Gem Pack** dibuka! **+${item.amount.toLocaleString()} Gems**`;
+                }
+                else if (k === 'xpscroll') {
+                    const beforeLvl = ud.level;
+                    ud.xp += item.amount;
+                    const lvUp = checkLevelUp(ud);
+                    eph = `✅ 📜 **XP Scroll** dibuka! **+${item.amount.toLocaleString()} XP**`;
+                    if (lvUp > 0) eph += `\n> 🎉 **LEVEL UP! ${beforeLvl} → ${ud.level}** (+${lvUp} SP)`;
+                }
+                else if (k === 'bomb') {
+                    ud.blocks.pog += item.amount;
+                    eph = `✅ 💣 **Block Bomb** meledak! **+${item.amount} Pot O' Gems** ke inventory`;
+                }
+
+                // Item instant mengembalikan view ke main (biar user lihat efek)
+                if (item.category === 'instant') {
+                    ud.currentView = 'main';
+                }
+
+                db.saveUser(ud);
+            }
+        }
+
+        // ===== EQUIP TOOL =====
+        else if (id.startsWith('equip_')) {
+            const k = id.slice(6);
+            if (!ud.ownedTools.includes(k)) { eph = '❌ Tidak punya tool ini.'; err = true; }
+            else { ud.equippedTool = k; db.saveUser(ud); eph = `✅ **${SHOP_TOOLS[k].name}** di-equip!`; }
+        }
+        else if (id === 'unequip_tool') {
+            ud.equippedTool = null;
+            db.saveUser(ud);
+            eph = '✅ Tool di-unequip.';
+        }
+
+        // ===== UPGRADE SKILL =====
+        else if (id.startsWith('up_')) {
+            const k = id.slice(3);
+            const s = SKILLS[k];
+            const lvl = ud.skills[k];
+            const cost = getSkillUpgradeCost(lvl);
+            if (lvl >= s.maxLevel) { eph = `⚠️ **${s.name}** sudah MAX!`; err = true; }
+            else if (ud.skillPoints < cost) { eph = `❌ SP kurang! Butuh **${cost}**, punya **${ud.skillPoints}**.`; err = true; }
+            else {
+                ud.skillPoints -= cost;
+                ud.skills[k]++;
+                db.saveUser(ud);
+                eph = `✅ ${s.emoji} **${s.name}** → Lv.**${ud.skills[k]}/${s.maxLevel}** (-${cost} SP)`;
+                if (k === 'mining_speed') {
+                    eph += `\n> ⏱️ Interval: **${(getAutoInterval(ud) / 1000).toFixed(1)}s**`;
+                }
+            }
+        }
+
+        if (ud.autoFarm === false && autoFarmIntervals.has(userId)) stopAutoFarm(userId);
+
+        if (!err) {
+            try {
+                await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+                activeMessages.set(userId, interaction.message);
+            } catch {}
+        }
+
+        if (eph) {
+            try {
+                if (err) await interaction.reply({ content: eph, ephemeral: true });
+                else await interaction.followUp({ content: eph, ephemeral: true });
+            } catch {}
+        }
+
+        refreshAllLeaderboards();
+    } catch (err) {
+        if (err?.code === 10062) console.log('⚠️ [10062]');
+        else if (err?.code === 40060) console.log('⚠️ [40060]');
+        else console.error('❌ Interaction error:', err);
+    }
+});
+
+client.login(process.env.DISCORD_TOKEN);
