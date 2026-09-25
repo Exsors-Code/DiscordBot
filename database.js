@@ -43,22 +43,33 @@ db.exec(`
 `);
 
 // ==========================================
-// MIGRATIONS — tambah kolom baru (aman dijalankan berkali-kali)
+// MIGRATIONS
 // ==========================================
 function tryMigration(sql, label) {
     try {
         db.exec(sql);
         console.log(`✅ Migration: ${label}`);
-    } catch (e) {
-        // sudah ada, skip
-    }
+    } catch (e) {}
 }
 
-tryMigration(`ALTER TABLE users ADD COLUMN items_json TEXT DEFAULT '{}'`, 'kolom items_json');
-tryMigration(`ALTER TABLE users ADD COLUMN buff_timewarp INTEGER DEFAULT 0`, 'kolom buff_timewarp');
+tryMigration(`ALTER TABLE users ADD COLUMN items_json TEXT DEFAULT '{}'`, 'users.items_json');
+tryMigration(`ALTER TABLE users ADD COLUMN buff_timewarp INTEGER DEFAULT 0`, 'users.buff_timewarp');
+tryMigration(`ALTER TABLE users ADD COLUMN gacha_rolls_today INTEGER DEFAULT 0`, 'users.gacha_rolls_today');
+tryMigration(`ALTER TABLE users ADD COLUMN gacha_last_date TEXT DEFAULT ''`, 'users.gacha_last_date');
+tryMigration(`ALTER TABLE users ADD COLUMN total_gacha_rolls INTEGER DEFAULT 0`, 'users.total_gacha_rolls');
 
 // ==========================================
-// TABEL GUILD CONFIG
+// GLOBAL STATS (untuk supply terbatas)
+// ==========================================
+db.exec(`
+    CREATE TABLE IF NOT EXISTS global_stats (
+        key TEXT PRIMARY KEY,
+        value INTEGER DEFAULT 0
+    )
+`);
+
+// ==========================================
+// GUILD CONFIG
 // ==========================================
 db.exec(`
     CREATE TABLE IF NOT EXISTS guild_config (
@@ -69,9 +80,9 @@ db.exec(`
     )
 `);
 
-tryMigration(`ALTER TABLE guild_config ADD COLUMN afkCheckEnabled INTEGER DEFAULT 0`, 'kolom afkCheckEnabled');
-tryMigration(`ALTER TABLE guild_config ADD COLUMN afkCheckInterval INTEGER DEFAULT 20`, 'kolom afkCheckInterval');
-tryMigration(`ALTER TABLE guild_config ADD COLUMN afkCheckTimeout INTEGER DEFAULT 120`, 'kolom afkCheckTimeout');
+tryMigration(`ALTER TABLE guild_config ADD COLUMN afkCheckEnabled INTEGER DEFAULT 0`, 'guild_config.afkCheckEnabled');
+tryMigration(`ALTER TABLE guild_config ADD COLUMN afkCheckInterval INTEGER DEFAULT 20`, 'guild_config.afkCheckInterval');
+tryMigration(`ALTER TABLE guild_config ADD COLUMN afkCheckTimeout INTEGER DEFAULT 120`, 'guild_config.afkCheckTimeout');
 
 db.exec(`
     CREATE TABLE IF NOT EXISTS welcome_config (
@@ -211,10 +222,17 @@ console.log('✅ Database SQLite siap!');
 // ==========================================
 // USER CRUD
 // ==========================================
+function getTodayDate() {
+    return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
 function rowToUser(row) {
     if (!row) return null;
     let extraItems = {};
     try { extraItems = JSON.parse(row.items_json || '{}'); } catch (e) { extraItems = {}; }
+
+    const today = getTodayDate();
+    const rollsToday = (row.gacha_last_date === today) ? (row.gacha_rolls_today || 0) : 0;
 
     return {
         userId: row.userId, username: row.username,
@@ -235,7 +253,9 @@ function rowToUser(row) {
             gempack: extraItems.gempack || 0,
             xpscroll: extraItems.xpscroll || 0,
             bomb: extraItems.bomb || 0,
-            timewarp: extraItems.timewarp || 0
+            timewarp: extraItems.timewarp || 0,
+            gbc: extraItems.gbc || 0,
+            gang: extraItems.gang || 0
         },
         activeBuffs: {
             arroz: row.buff_arroz,
@@ -246,7 +266,11 @@ function rowToUser(row) {
         autoFarm: row.autoFarm === 1,
         lastBreak: row.lastBreak,
         currentView: 'main',
-        event: { name: row.event_name, gemsMult: row.event_gemsMult, blocksMult: row.event_blocksMult }
+        event: { name: row.event_name, gemsMult: row.event_gemsMult, blocksMult: row.event_blocksMult },
+
+        // ===== GACHA =====
+        gachaRollsToday: rollsToday,
+        totalGachaRolls: row.total_gacha_rolls || 0
     };
 }
 
@@ -277,7 +301,9 @@ function saveUser(ud) {
             gempack: ud.items.gempack || 0,
             xpscroll: ud.items.xpscroll || 0,
             bomb: ud.items.bomb || 0,
-            timewarp: ud.items.timewarp || 0
+            timewarp: ud.items.timewarp || 0,
+            gbc: ud.items.gbc || 0,
+            gang: ud.items.gang || 0
         };
         db.prepare(`
             UPDATE users SET username = ?, level = ?, xp = ?, maxXp = ?, skillPoints = ?,
@@ -310,6 +336,37 @@ function resetUser(userId) {
     return true;
 }
 
+// ==========================================
+// GACHA FUNCTIONS
+// ==========================================
+function incrementGachaRoll(userId) {
+    const today = getTodayDate();
+    const row = db.prepare('SELECT gacha_rolls_today, gacha_last_date FROM users WHERE userId = ?').get(userId);
+    if (!row) return;
+    if (row.gacha_last_date !== today) {
+        db.prepare('UPDATE users SET gacha_rolls_today = 1, gacha_last_date = ?, total_gacha_rolls = total_gacha_rolls + 1 WHERE userId = ?').run(today, userId);
+    } else {
+        db.prepare('UPDATE users SET gacha_rolls_today = gacha_rolls_today + 1, total_gacha_rolls = total_gacha_rolls + 1 WHERE userId = ?').run(userId);
+    }
+}
+
+function getGlobalStat(key) {
+    const row = db.prepare('SELECT value FROM global_stats WHERE key = ?').get(key);
+    return row ? row.value : 0;
+}
+
+function incrementGlobalStat(key, amount = 1) {
+    const existing = db.prepare('SELECT value FROM global_stats WHERE key = ?').get(key);
+    if (!existing) {
+        db.prepare('INSERT INTO global_stats (key, value) VALUES (?, ?)').run(key, amount);
+    } else {
+        db.prepare('UPDATE global_stats SET value = value + ? WHERE key = ?').run(amount, key);
+    }
+}
+
+// ==========================================
+// GUILD CONFIG
+// ==========================================
 function getGuildConfig(g) { return db.prepare('SELECT * FROM guild_config WHERE guildId = ?').get(g) || null; }
 function setGuildConfig(g, p, l) {
     db.prepare(`INSERT INTO guild_config (guildId, panelChannelId, leaderboardChannelId) VALUES (?, ?, ?)
@@ -319,7 +376,6 @@ function updateLeaderboardMessage(g, m) { db.prepare('UPDATE guild_config SET le
 function getAllGuildConfigs() { return db.prepare('SELECT * FROM guild_config').all(); }
 function removeGuildConfig(g) { db.prepare('DELETE FROM guild_config WHERE guildId = ?').run(g); }
 
-// ===== AFK CHECK CONFIG =====
 function getAfkCheckConfig(guildId) {
     const row = db.prepare('SELECT afkCheckEnabled, afkCheckInterval, afkCheckTimeout FROM guild_config WHERE guildId = ?').get(guildId);
     if (!row) return { enabled: false, intervalMinutes: 20, timeoutSeconds: 120 };
@@ -451,7 +507,7 @@ function removeUserThread(guildId, userId) {
 }
 
 // ==========================================
-// UPDATE CONFIG & HISTORY
+// UPDATE SYSTEM
 // ==========================================
 function getUpdateConfig(guildId) { return db.prepare('SELECT * FROM update_config WHERE guildId = ?').get(guildId) || null; }
 function setUpdateConfig(guildId, data) {
@@ -470,7 +526,6 @@ function addUpdateHistory(guildId, version, title, content, type, authorId) {
 function getUpdateHistory(guildId, limit = 10) {
     return db.prepare('SELECT * FROM update_history WHERE guildId = ? ORDER BY timestamp DESC LIMIT ?').all(guildId, limit);
 }
-
 function getUpdateHistoryById(id) { return db.prepare('SELECT * FROM update_history WHERE id = ?').get(id) || null; }
 function updateHistoryEntry(id, data) {
     db.prepare(`UPDATE update_history SET version = ?, title = ?, content = ?, type = ? WHERE id = ?`)
@@ -499,5 +554,10 @@ module.exports = {
     addUpdateHistory, getUpdateHistory,
     getUpdateHistoryById, updateHistoryEntry,
     deleteHistoryEntry, deleteUpdateHistoryByVersion,
-    clearUpdateHistory
+    clearUpdateHistory,
+
+    // ===== GACHA =====
+    incrementGachaRoll,
+    getGlobalStat,
+    incrementGlobalStat
 };
