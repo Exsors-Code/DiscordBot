@@ -367,7 +367,7 @@ function mainEmbed(ud) {
 
     const autoIcon = ud.autoFarm ? '▶️' : '⏸️';
     const twActive = isBuffActive(ud, 'timewarp');
-    const autoText = ud.autoFarm ? `**ON** · (interval/1000).toFixed(1)s{twActive ? ' ⚡' : ''}` : '**OFF**';
+    const autoText = ud.autoFarm ? `**ON** · ${(interval / 1000).toFixed(1)}s${twActive ? ' ⚡' : ''}` : '**OFF**';
     const statusIcon = ud.autoFarm ? '🟢' : '⚪';
 
     const buffs = [];
@@ -377,7 +377,7 @@ function mainEmbed(ud) {
     const buffText = buffs.length ? buffs.join('  ·  ') : '*Tidak ada buff aktif*';
 
     const toolText = tool
-        ? `tool.emoji**{tool.name}** x${tool.multiplier}  ·  ${tool.blocksPerBreak} far`
+        ? `${tool.emoji} **${tool.name}** x${tool.multiplier}  ·  ${tool.blocksPerBreak} far`
         : '⚪ **Tidak ada** · 1 far';
 
     const stockText = isUnlimited(ud.selectedBlock)
@@ -393,7 +393,7 @@ function mainEmbed(ud) {
         .setColor(ud.autoFarm ? '#57F287' : '#2b2d31')
         .setAuthor({ name: `🌾 Farming Panel — ${ud.username}` })
         .setDescription(
-            `**Level ud.level** · ⭐**{ud.skillPoints} SP**\n` +
+            `**Level ${ud.level}**  ·  ⭐ **${ud.skillPoints} SP**\n` +
             `\`${xpBar}\`  **${Math.floor(xpPercent * 100)}%**\n` +
             `📈 ${ud.xp.toLocaleString()} / ${ud.maxXp.toLocaleString()} XP`
         )
@@ -404,14 +404,14 @@ function mainEmbed(ud) {
                     `🎉 **Event**  ·  ${ev.name}\n` +
                     `💰 **Gems**  ·  ${Math.floor(ud.gems).toLocaleString()}\n` +
                     `${EMOJI.wl} **WL**  ·  ${formatWL(ud.locks.wl)}\n` +
-                    `⛏️ **Mining**  ·  ${sel.emoji} sel.name({stockText})`,
+                    `⛏️ **Mining**  ·  ${sel.emoji} ${sel.name} (${stockText})`,
                 inline: false
             },
             {
                 name: '💎  Booster',
                 value:
-                    `ANCESRED.emoji**AncesRed** · Lv.{ancesLevel}/${ANCES_RED.maxLevel}\n` +
-                    `${GANG.emoji} **Gang**  ·  gangCount/{GANG.maxCount}\n` +
+                    `${ANCES_RED.emoji} **Ances Red**  ·  Lv.${ancesLevel}/${ANCES_RED.maxLevel}\n` +
+                    `${GANG.emoji} **Gang**  ·  ${gangCount}/${GANG.maxCount}\n` +
                     `✨ **Total Boost**  ·  **+${boostPercent}%** Gems`,
                 inline: false
             },
@@ -505,7 +505,7 @@ function shopToolsEmbed(ud) {
     for (const k in SHOP_TOOLS) {
         const t = SHOP_TOOLS[k];
         const o = ud.ownedTools.includes(k) ? ' ✅' : '';
-        l.push(`t.emoji**{t.name}**${o} — ${t.price.toLocaleString()} ${EMOJI.gems}\n> x${t.multiplier} Gems | ⛏️ **${t.blocksPerBreak} far**`);
+        l.push(`${t.emoji} **${t.name}**${o} — ${t.price.toLocaleString()} ${EMOJI.gems}\n> x${t.multiplier} Gems | ⛏️ **${t.blocksPerBreak} far**`);
     }
     return new EmbedBuilder().setColor('#5865F2').setTitle('🛒 Shop — Tools')
         .setDescription(l.join('\n\n'))
@@ -542,7 +542,7 @@ function shopBlocksEmbed(ud, page = 'low') {
             const b = BLOCKS_LOW[k];
             const priceLabel = b.unlimited ? '**∞ (Unlimited)**' : `${formatWL(b.priceWL)} ${EMOJI.wl}`;
             const gemsEq = b.unlimited ? 0 : Math.floor(b.priceWL * WL_TO_GEMS);
-            l.push(`b.emoji**{b.name}** — priceLabel{gemsEq ? ` *(~${gemsEq.toLocaleString()} gems)*` : ''}\n> Reward: **${b.gemsMin.toLocaleString()}-b.gemsMax.toLocaleString()**Gems|**{b.xpMin}-${b.xpMax} XP**\n> 📦 Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+            l.push(`${b.emoji} **${b.name}** — ${priceLabel}${gemsEq ? ` *(~${gemsEq.toLocaleString()} gems)*` : ''}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems | **${b.xpMin}-${b.xpMax} XP**\n> 📦 Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
         }
     }
     else if (page === 'pog') {
@@ -551,7 +551,7 @@ function shopBlocksEmbed(ud, page = 'low') {
         for (const k in BLOCK_POG) {
             const b = BLOCK_POG[k];
             const gemsEq = Math.floor(b.priceWL * WL_TO_GEMS);
-            l.push(`b.emoji**{b.name}** — ${formatWL(b.priceWL)} EMOJI.wl*(~{gemsEq.toLocaleString()} gems)*\n> Reward: **b.gemsMin.toLocaleString()-{b.gemsMax.toLocaleString()}** Gems | **b.xpMin-{b.xpMax} XP**\n> 📦 Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+            l.push(`${b.emoji} **${b.name}** — ${formatWL(b.priceWL)} ${EMOJI.wl} *(~${gemsEq.toLocaleString()} gems)*\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems | **${b.xpMin}-${b.xpMax} XP**\n> 📦 Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
         }
     }
     else {
@@ -560,7 +560,7 @@ function shopBlocksEmbed(ud, page = 'low') {
         for (const k in BLOCKS_HIGH) {
             const b = BLOCKS_HIGH[k];
             const gemsEq = Math.floor(b.priceWL * WL_TO_GEMS);
-            l.push(`b.emoji**{b.name}** — ${formatWL(b.priceWL)} EMOJI.wl*(~{gemsEq.toLocaleString()} gems)*\n> Reward: **b.gemsMin.toLocaleString()-{b.gemsMax.toLocaleString()}** Gems | **b.xpMin-{b.xpMax} XP**\n> 📦 Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+            l.push(`${b.emoji} **${b.name}** — ${formatWL(b.priceWL)} ${EMOJI.wl} *(~${gemsEq.toLocaleString()} gems)*\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems | **${b.xpMin}-${b.xpMax} XP**\n> 📦 Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
         }
     }
 
@@ -612,21 +612,21 @@ function changeBlockEmbed(ud, page = 'low') {
         for (const k in BLOCKS_LOW) {
             const b = BLOCKS_LOW[k];
             const s = ud.selectedBlock === k ? ' **[AKTIF]**' : '';
-            l.push(`b.emoji**{b.name}**${s}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems\n> Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+            l.push(`${b.emoji} **${b.name}**${s}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems\n> Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
         }
     } else if (page === 'pog') {
         title = '⛏️ Ganti Block — POG';
         for (const k in BLOCK_POG) {
             const b = BLOCK_POG[k];
             const s = ud.selectedBlock === k ? ' **[AKTIF]**' : '';
-            l.push(`b.emoji**{b.name}**${s}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems\n> Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+            l.push(`${b.emoji} **${b.name}**${s}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems\n> Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
         }
     } else {
         title = '⛏️ Ganti Block — High Tier';
         for (const k in BLOCKS_HIGH) {
             const b = BLOCKS_HIGH[k];
             const s = ud.selectedBlock === k ? ' **[AKTIF]**' : '';
-            l.push(`b.emoji**{b.name}**${s}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems\n> Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+            l.push(`${b.emoji} **${b.name}**${s}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems\n> Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
         }
     }
 
@@ -651,7 +651,7 @@ function changeBlockButtons(ud, page = 'low') {
         const stock = isUnlimited(k) ? '∞' : (ud.blocks[k] || 0).toLocaleString();
         const isSelected = ud.selectedBlock === k;
         const isDisabled = isSelected || (!isUnlimited(k) && (ud.blocks[k] || 0) <= 0);
-        const btn = new ButtonBuilder().setCustomId(`selectblock_k`).setLabel(`{b.name} (${stock})`).setStyle(isSelected ? ButtonStyle.Success : ButtonStyle.Primary).setDisabled(isDisabled);
+        const btn = new ButtonBuilder().setCustomId(`selectblock_${k}`).setLabel(`${b.name} (${stock})`).setStyle(isSelected ? ButtonStyle.Success : ButtonStyle.Primary).setDisabled(isDisabled);
         if (count < 5) selectRow1.addComponents(btn);
         else selectRow2.addComponents(btn);
         count++;
@@ -673,7 +673,7 @@ function shopItemsEmbed(ud) {
     const buffs = [], instant = [], gacha = [];
     for (const k in SHOP_ITEMS) {
         const i = SHOP_ITEMS[k];
-        const line = `i.emoji**{i.name}** — ${i.price.toLocaleString()} ${EMOJI.gems}\n> ${i.desc}\n> 📦 Dimiliki: **${ud.items[k] || 0}**`;
+        const line = `${i.emoji} **${i.name}** — ${i.price.toLocaleString()} ${EMOJI.gems}\n> ${i.desc}\n> 📦 Dimiliki: **${ud.items[k] || 0}**`;
         if (i.category === 'buff') buffs.push(line);
         else if (i.category === 'gacha') gacha.push(line);
         else instant.push(line);
@@ -708,7 +708,7 @@ function shopLocksEmbed(ud) {
     const l = ['**BELI LOCK**', ''];
     for (const k in SHOP_LOCKS) {
         const x = SHOP_LOCKS[k];
-        l.push(`x.emoji**{x.name}** — ${x.price.toLocaleString()} ${EMOJI.gems}/lock\n> 📦 Kamu punya: **${formatWL(ud.locks[k])}**`);
+        l.push(`${x.emoji} **${x.name}** — ${x.price.toLocaleString()} ${EMOJI.gems}/lock\n> 📦 Kamu punya: **${formatWL(ud.locks[k])}**`);
     }
     l.push(`\n**Auto-convert:** 100 ${EMOJI.wl} → 1 ${EMOJI.dl} → 1 ${EMOJI.bgl} → 1 ${EMOJI.black}`);
     return new EmbedBuilder().setColor('#F1C40F').setTitle('🛒 Shop — Locks')
@@ -747,7 +747,7 @@ function skillsEmbed(ud) {
                 const lvl = ud.skills[k];
                 const isMax = lvl >= s.maxLevel;
                 const cost = getSkillUpgradeCost(lvl);
-                return `s.emoji**{s.name}** — ${isMax ? '**MAX** ✅' : `Lv. lvl/{s.maxLevel} • **${cost} SP**`}`;
+                return `${s.emoji} **${s.name}** — ${isMax ? '**MAX** ✅' : `Lv. ${lvl}/${s.maxLevel} • **${cost} SP**`}`;
             }).join('\n')
         )
         .setFooter({ text: `Level: ${ud.level} • SP: ${ud.skillPoints}` });
@@ -787,13 +787,13 @@ function itemsEmbed(ud) {
     if (ud.items.bomb > 0) instants.push(`💣 **Block Bomb** ×${ud.items.bomb}\n> +100 Pot O' Gems`);
 
     const others = [];
-    if (ud.items.gbc > 0) others.push(`EMOJI.gbc**GBC**×{ud.items.gbc}\n> Tiket gacha`);
+    if (ud.items.gbc > 0) others.push(`${EMOJI.gbc} **GBC** ×${ud.items.gbc}\n> Tiket gacha`);
 
     const ancesLevel = ud.items.ancesRedLevel || 0;
     const gangCount = ud.items.gang || 0;
     const passive = [];
-    passive.push(`ANCESRED.emoji**AncesRed** · Lv.**{ancesLevel}/ANCESRED.maxLevel** · +{ANCES_RED.bonuses[ancesLevel]}% Gems`);
-    passive.push(`GANG.emoji**Gang** · **{gangCount}/GANG.maxCount** · +{Math.min(gangCount, GANG.maxCount) * GANG.bonusPerGang}% Gems`);
+    passive.push(`${ANCES_RED.emoji} **Ances Red**  ·  Lv.**${ancesLevel}/${ANCES_RED.maxLevel}**  ·  +${ANCES_RED.bonuses[ancesLevel]}% Gems`);
+    passive.push(`${GANG.emoji} **Gang**  ·  **${gangCount}/${GANG.maxCount}**  ·  +${Math.min(gangCount, GANG.maxCount) * GANG.bonusPerGang}% Gems`);
 
     let desc = `**🔴 PASSIVE BOOSTER**\n\n${passive.join('\n')}\n\n`;
     if (buffs.length > 0) desc += `**✨ BUFF ITEM**\n\n${buffs.join('\n\n')}\n\n`;
@@ -821,9 +821,9 @@ function itemsButtons(ud) {
     const ancesLevel = ud.items.ancesRedLevel || 0;
     if (ancesLevel < ANCES_RED.maxLevel) {
         const cost = ANCES_RED.costs[ancesLevel];
-        const costText = cost.gems > 0 ? `cost.gems.toLocaleString()Gems`:`{cost.bgl} BGL`;
+        const costText = cost.gems > 0 ? `${cost.gems.toLocaleString()} Gems` : `${cost.bgl} BGL`;
         rows.push(new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('upgrade_ancesred').setLabel(`Upgrade Ances Red → Lv.ancesLevel+1({costText})`).setEmoji(EMOJI.ancesred).setStyle(ButtonStyle.Danger)
+            new ButtonBuilder().setCustomId('upgrade_ancesred').setLabel(`Upgrade Ances Red → Lv.${ancesLevel + 1} (${costText})`).setEmoji(EMOJI.ancesred).setStyle(ButtonStyle.Danger)
         ));
     }
 
@@ -846,7 +846,7 @@ function gachaEmbed(ud) {
         const isGang = p.type === 'gang';
         const isAnces = p.type === 'ancesred';
         const mark = isGang ? '🎉 ' : (isAnces ? '🔴 ' : '');
-        prizeLines.push(`**${p.chance}%** mark{p.label}`);
+        prizeLines.push(`**${p.chance}%** ${mark}${p.label}`);
     }
 
     return new EmbedBuilder()
@@ -854,9 +854,9 @@ function gachaEmbed(ud) {
         .setTitle('🎰 Gacha — Lucky Roll')
         .setDescription(
             `Coba keberuntunganmu! Pakai ${EMOJI.gbc} **GBC** untuk roll.\n\n` +
-            `EMOJI.gbc**GBCkamu:****{ud.items.gbc || 0}**\n` +
+            `${EMOJI.gbc} **GBC kamu:** **${ud.items.gbc || 0}**\n` +
             `🎯 **Total roll:** ${ud.totalGachaRolls}\n` +
-            `${GANG.emoji} **Gang global:** gangGlobalOwned/{cfg.gangGlobalSupply} *(${gangRemaining} sisa)*`
+            `${GANG.emoji} **Gang global:** ${gangGlobalOwned}/${cfg.gangGlobalSupply} *(${gangRemaining} sisa)*`
         )
         .addFields({ name: '🎁  Hadiah & Persentase', value: prizeLines.join('\n'), inline: false })
         .setFooter({ text: '1 roll = 1 GBC • Tanpa limit harian' })
@@ -882,7 +882,7 @@ function gachaButtons(ud) {
 function toolsEmbed(ud) {
     const t = ud.equippedTool ? SHOP_TOOLS[ud.equippedTool] : null;
     return new EmbedBuilder().setColor('#3498DB').setTitle('🛠️ Tools')
-        .setDescription((t ? `**Equipped:** t.emoji**{t.name} x${t.multiplier}**` : '*Tidak ada tool*') + `\n\n*Tools multiply Gems & XP.*`);
+        .setDescription((t ? `**Equipped:** ${t.emoji} **${t.name} x${t.multiplier}**` : '*Tidak ada tool*') + `\n\n*Tools multiply Gems & XP.*`);
 }
 function toolsButtons(ud) {
     const r = [];
@@ -919,8 +919,8 @@ function profileEmbed(ud) {
             { name: '⭐ SP', value: `${ud.skillPoints}`, inline: true },
             { name: '🎰 Total Roll', value: `${ud.totalGachaRolls}`, inline: true },
             { name: '💎 Booster', value:
-                `ANCESRED.emoji**AncesRed**·Lv.{ancesLevel}/${ANCES_RED.maxLevel}\n` +
-                `${GANG.emoji} **Gang** · gangCount/{GANG.maxCount}\n` +
+                `${ANCES_RED.emoji} **Ances Red** · Lv.${ancesLevel}/${ANCES_RED.maxLevel}\n` +
+                `${GANG.emoji} **Gang** · ${gangCount}/${GANG.maxCount}\n` +
                 `✨ **Total Boost** · **+${Math.round((totalBoost - 1) * 100)}%** Gems`, inline: false },
             { name: '🔒 Locks', value:
                 `${EMOJI.wl} **WL**: ${formatWL(ud.locks.wl)}\n` +
@@ -956,7 +956,7 @@ async function generateLeaderboardEmbed(guildId) {
         if (e.locks.dl > 0) p.push(`${EMOJI.dl} ${formatWL(e.locks.dl)}`);
         if (e.locks.bgl > 0) p.push(`${EMOJI.bgl} ${formatWL(e.locks.bgl)}`);
         if (e.locks.bglb > 0) p.push(`${EMOJI.black} ${formatWL(e.locks.bglb)}`);
-        return `r**{e.username}** (Lv.${e.level})\n> ${p.join(' | ')}\n> 💰 **${formatWL(e.totalValue)} WL**`;
+        return `${r} **${e.username}** (Lv.${e.level})\n> ${p.join(' | ')}\n> 💰 **${formatWL(e.totalValue)} WL**`;
     });
     if (lines.length === 0) lines.push('*Belum ada pemain dengan lock.*');
     return new EmbedBuilder().setColor('#FFD700').setTitle(`🏆 Leaderboard — ${gn}`)
@@ -1070,9 +1070,9 @@ function doBreak(ud) {
 
 function formatBreakLog(r, prefix = 'Auto') {
     const bd = SHOP_BLOCKS[r.blockType];
-    let m = `prefix[{bd.name}]: -${r.blocksBroken}`;
+    let m = `${prefix} [${bd.name}]: -${r.blocksBroken}`;
     if (r.returned > 0) m += ` (+${r.returned})`;
-    m += ` → +${r.gemsGained.toLocaleString()} EMOJI.gems/+{r.xpGained.toLocaleString()} XP`;
+    m += ` → +${r.gemsGained.toLocaleString()} ${EMOJI.gems} / +${r.xpGained.toLocaleString()} XP`;
     if (r.levelsGained > 0) m += ` 🎉 **LEVEL UP! +${r.levelsGained} SP**`;
     return m;
 }
@@ -1206,9 +1206,9 @@ function startAutoFarm(userId) {
                 db.saveUser(ud);
                 if (ud._acc && ud._acc.blocks > 0) {
                     const bd = SHOP_BLOCKS[ud._acc.blockType];
-                    let m = `Auto [bd.name]:-{ud._acc.blocks}`;
+                    let m = `Auto [${bd.name}]: -${ud._acc.blocks}`;
                     if (ud._acc.returned > 0) m += ` (+${ud._acc.returned})`;
-                    m += ` → +${ud._acc.gems.toLocaleString()} EMOJI.gems/+{ud._acc.xp.toLocaleString()} XP`;
+                    m += ` → +${ud._acc.gems.toLocaleString()} ${EMOJI.gems} / +${ud._acc.xp.toLocaleString()} XP`;
                     if (ud._acc.levels > 0) m += ` 🎉 **LEVEL UP! +${ud._acc.levels} SP**`;
                     ud.lastBreak = m;
                     ud._acc = null;
@@ -1228,9 +1228,9 @@ function startAutoFarm(userId) {
             if (ud.autoFarm !== true) return;
             if (ud._acc && ud._acc.blocks > 0) {
                 const bd = SHOP_BLOCKS[ud._acc.blockType];
-                let m = `Auto [bd.name]:-{ud._acc.blocks}`;
+                let m = `Auto [${bd.name}]: -${ud._acc.blocks}`;
                 if (ud._acc.returned > 0) m += ` (+${ud._acc.returned})`;
-                m += ` → +${ud._acc.gems.toLocaleString()} EMOJI.gems/+{ud._acc.xp.toLocaleString()} XP`;
+                m += ` → +${ud._acc.gems.toLocaleString()} ${EMOJI.gems} / +${ud._acc.xp.toLocaleString()} XP`;
                 if (ud._acc.levels > 0) m += ` 🎉 **LEVEL UP! +${ud._acc.levels} SP**`;
                 ud.lastBreak = m;
                 ud._acc = { gems: 0, xp: 0, blocks: 0, returned: 0, levels: 0, blockType: null };
@@ -1404,7 +1404,7 @@ client.once('ready', async () => {
 // ==========================================
 // EVENT LISTENERS
 // ==========================================
-client.on('guildCreate', g => console.log(`➕ Join: g.name({g.id})`));
+client.on('guildCreate', g => console.log(`➕ Join: ${g.name} (${g.id})`));
 
 client.on('guildMemberAdd', async m => {
     try { await handleMemberJoin(m); } catch (e) {}
@@ -1493,7 +1493,7 @@ function rollGacha(ud) {
     else if (selected.type === 'ancesred') {
         ud.items.ancesRedLevel = (ud.items.ancesRedLevel || 0) + selected.amount;
         if (ud.items.ancesRedLevel > ANCES_RED.maxLevel) ud.items.ancesRedLevel = ANCES_RED.maxLevel;
-        result.extra = `ANCESRED.emoji→Lv.{ud.items.ancesRedLevel}`;
+        result.extra = `${ANCES_RED.emoji} → Lv.${ud.items.ancesRedLevel}`;
     }
     else if (selected.type === 'gang') {
         const currentOwned = db.getGlobalStat('gang_owned');
@@ -1505,7 +1505,7 @@ function rollGacha(ud) {
             ud.items.gang = (ud.items.gang || 0) + selected.amount;
             if (ud.items.gang > GANG.maxCount) ud.items.gang = GANG.maxCount;
             db.incrementGlobalStat('gang_owned', selected.amount);
-            result.extra = `GANG.emojix{ud.items.gang}/${GANG.maxCount}`;
+            result.extra = `${GANG.emoji} x${ud.items.gang}/${GANG.maxCount}`;
         }
     }
 
@@ -1641,11 +1641,11 @@ client.on('interactionCreate', async interaction => {
                     const bm = interaction.options.getInteger('blocks');
                     ud.event.gemsMult = gm;
                     ud.event.blocksMult = bm;
-                    ud.event.name = `Custom Event (Gems xgm,Blocksx{bm})`;
+                    ud.event.name = `Custom Event (Gems x${gm}, Blocks x${bm})`;
                     db.saveUser(ud);
                     const msg = activeMessages.get(userId);
                     if (msg) { try { await msg.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); } catch {} }
-                    return interaction.editReply({ content: `✅ Event: Gems xgm|Blocksx{bm}` });
+                    return interaction.editReply({ content: `✅ Event: Gems x${gm} | Blocks x${bm}` });
                 } catch (e) { return interaction.editReply({ content: `❌ Gagal: ${e.message}` }).catch(() => {}); }
             }
             return;
@@ -1748,14 +1748,14 @@ client.on('interactionCreate', async interaction => {
                 if (ud.locks.wl < totalWL) {
                     const needGems = Math.ceil(totalWL * WL_TO_GEMS);
                     return interaction.reply({
-                        content: `❌ WL kurang! Butuh **${formatWL(totalWL)} EMOJI.wl**(~{needGems.toLocaleString()} gems), kamu punya **${formatWL(ud.locks.wl)} ${EMOJI.wl}**`,
+                        content: `❌ WL kurang! Butuh **${formatWL(totalWL)} ${EMOJI.wl}** (~${needGems.toLocaleString()} gems), kamu punya **${formatWL(ud.locks.wl)} ${EMOJI.wl}**`,
                         ephemeral: true
                     });
                 }
 
                 ud.locks.wl -= totalWL;
                 ud.blocks[k] = (ud.blocks[k] || 0) + qty;
-                resp = `✅ Beli **b.namex{qty.toLocaleString()}**\n> Biaya: **${formatWL(totalWL)} ${EMOJI.wl}**\n> Sisa WL: ${formatWL(ud.locks.wl)}`;
+                resp = `✅ Beli **${b.name} x${qty.toLocaleString()}**\n> Biaya: **${formatWL(totalWL)} ${EMOJI.wl}**\n> Sisa WL: ${formatWL(ud.locks.wl)}`;
             }
             else if (interaction.customId.startsWith('modal_buylock_')) {
                 const k = interaction.customId.replace('modal_buylock_', '');
@@ -1766,7 +1766,7 @@ client.on('interactionCreate', async interaction => {
                 ud.gems -= tc;
                 ud.locks[k] += qty;
                 db.saveUser(ud);
-                resp = `✅ Beli **l.namex{qty.toLocaleString()}**\n> WL ${formatWL(ud.locks.wl)} | DL ${formatWL(ud.locks.dl)} | BGL ${formatWL(ud.locks.bgl)} | BGLB ${formatWL(ud.locks.bglb)}`;
+                resp = `✅ Beli **${l.name} x${qty.toLocaleString()}**\n> WL ${formatWL(ud.locks.wl)} | DL ${formatWL(ud.locks.dl)} | BGL ${formatWL(ud.locks.bgl)} | BGLB ${formatWL(ud.locks.bglb)}`;
             }
 
             db.saveUser(ud);
@@ -1813,7 +1813,7 @@ client.on('interactionCreate', async interaction => {
             ud.autoFarm = false;
             ud.lastBreak = 'Auto Farm dimatikan (interaksi lain).';
             db.saveUser(ud);
-            console.log(`⏹️ Auto Farm OFF via "id"({interaction.user.username})`);
+            console.log(`⏹️ Auto Farm OFF via "${id}" (${interaction.user.username})`);
         }
 
         let eph = null, err = false;
@@ -1911,7 +1911,7 @@ client.on('interactionCreate', async interaction => {
             const gbcOwned = ud.items.gbc || 0;
 
             if (gbcOwned < rolls) {
-                return interaction.reply({ content: `❌ GBC kurang! Butuh **${rolls}** EMOJI.gbc,kamupunya**{gbcOwned}**`, ephemeral: true });
+                return interaction.reply({ content: `❌ GBC kurang! Butuh **${rolls}** ${EMOJI.gbc}, kamu punya **${gbcOwned}**`, ephemeral: true });
             }
 
             ud.items.gbc -= rolls;
@@ -1921,7 +1921,7 @@ client.on('interactionCreate', async interaction => {
 
             const lines = results.map((r, i) => {
                 const mark = r.type === 'gang' ? '🎉 ' : (r.type === 'ancesred' ? '🔴 ' : '');
-                return `**${i + 1}.** mark{r.label}\n> ${r.extra}`;
+                return `**${i + 1}.** ${mark}${r.label}\n> ${r.extra}`;
             });
 
             const embed = new EmbedBuilder()
@@ -1930,7 +1930,7 @@ client.on('interactionCreate', async interaction => {
                 .setDescription(lines.join('\n\n'))
                 .addFields({
                     name: '📊 Ringkasan',
-                    value: `${EMOJI.gbc} **GBC tersisa:** ${ud.items.gbc}\n🎯 **Total roll:** ${ud.totalGachaRolls}\n${GANG.emoji} **Gang kamu:** ud.items.gang||0/{GANG.maxCount}`
+                    value: `${EMOJI.gbc} **GBC tersisa:** ${ud.items.gbc}\n🎯 **Total roll:** ${ud.totalGachaRolls}\n${GANG.emoji} **Gang kamu:** ${ud.items.gang || 0}/${GANG.maxCount}`
                 })
                 .setFooter({ text: `Roll dari ${interaction.user.username}` })
                 .setTimestamp();
@@ -2086,7 +2086,7 @@ client.on('interactionCreate', async interaction => {
                 if (!ud.items[k]) ud.items[k] = 0;
                 ud.items[k]++;
                 db.saveUser(ud);
-                eph = `✅ Beli i.emoji**{i.name}** ×1!`;
+                eph = `✅ Beli ${i.emoji} **${i.name}** ×1!`;
             }
         }
 
@@ -2096,14 +2096,14 @@ client.on('interactionCreate', async interaction => {
             const k = id.slice(4);
             const item = SHOP_ITEMS[k];
             if (!item) { eph = '❌ Item invalid.'; err = true; }
-            else if (!ud.items[k] || ud.items[k] <= 0) { eph = `❌ Tidak punya item.emoji**{item.name}**!`; err = true; }
+            else if (!ud.items[k] || ud.items[k] <= 0) { eph = `❌ Tidak punya ${item.emoji} **${item.name}**!`; err = true; }
             else {
                 ud.items[k]--;
                 if (k === 'arroz') { ud.activeBuffs.arroz = Date.now() + (item.duration * 1000); eph = `✅ 🍗 **Arroz** aktif! x2 Gems selama ${item.duration}s`; }
                 else if (k === 'clover') { ud.activeBuffs.clover = Date.now() + (item.duration * 1000); eph = `✅ 🍀 **Clover** aktif! x2 XP selama ${item.duration}s`; }
                 else if (k === 'timewarp') { ud.activeBuffs.timewarp = Date.now() + (item.duration * 1000); eph = `✅ ⏳ **Time Warp** aktif! Auto Farm 2x lebih cepat ${item.duration}s\n> ⚡ Interval: **${(getAutoInterval(ud) / 1000).toFixed(1)}s**`; }
                 else if (k === 'gempack') { ud.gems += item.amount; eph = `✅ 💎 **Gem Pack** dibuka! **+${item.amount.toLocaleString()} Gems**`; }
-                else if (k === 'xpscroll') { const bl = ud.level; ud.xp += item.amount; const lv = checkLevelUp(ud); eph = `✅ 📜 **XP Scroll** dibuka! **+${item.amount.toLocaleString()} XP**`; if (lv > 0) eph += `\n> 🎉 **LEVEL UP! ${bl} → ud.level**(+{lv} SP)`; }
+                else if (k === 'xpscroll') { const bl = ud.level; ud.xp += item.amount; const lv = checkLevelUp(ud); eph = `✅ 📜 **XP Scroll** dibuka! **+${item.amount.toLocaleString()} XP**`; if (lv > 0) eph += `\n> 🎉 **LEVEL UP! ${bl} → ${ud.level}** (+${lv} SP)`; }
                 else if (k === 'bomb') { ud.blocks.pog = (ud.blocks.pog || 0) + item.amount; eph = `✅ 💣 **Block Bomb** meledak! **+${item.amount} POG**`; }
                 if (item.category === 'instant') ud.currentView = 'main';
                 db.saveUser(ud);
@@ -2131,12 +2131,12 @@ client.on('interactionCreate', async interaction => {
             const lvl = ud.skills[k];
             const cost = getSkillUpgradeCost(lvl);
             if (lvl >= s.maxLevel) { eph = `⚠️ **${s.name}** sudah MAX!`; err = true; }
-            else if (ud.skillPoints < cost) { eph = `❌ SP kurang! Butuh **cost**,punya**{ud.skillPoints}**.`; err = true; }
+            else if (ud.skillPoints < cost) { eph = `❌ SP kurang! Butuh **${cost}**, punya **${ud.skillPoints}**.`; err = true; }
             else {
                 ud.skillPoints -= cost;
                 ud.skills[k]++;
                 db.saveUser(ud);
-                eph = `✅ s.emoji**{s.name}** → Lv.**ud.skills[k]/{s.maxLevel}** (-${cost} SP)`;
+                eph = `✅ ${s.emoji} **${s.name}** → Lv.**${ud.skills[k]}/${s.maxLevel}** (-${cost} SP)`;
                 if (k === 'mining_speed') eph += `\n> ⏱️ Interval: **${(getAutoInterval(ud) / 1000).toFixed(1)}s**`;
             }
         }
@@ -2166,5 +2166,3 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
-
-
