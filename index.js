@@ -174,53 +174,141 @@ function formatStock(k, a) {
 }
 
 // ==========================================
-// EMBEDS
+// 🎨 EMBEDS — MAIN PANEL (DESAIN BARU)
 // ==========================================
 function mainEmbed(ud) {
     const tool = ud.equippedTool ? SHOP_TOOLS[ud.equippedTool] : null;
     const sel = SHOP_BLOCKS[ud.selectedBlock];
-    const qty = ud.blocks[ud.selectedBlock];
     const interval = getAutoInterval(ud);
-    const auto = ud.autoFarm ? `**ON** • ${(interval / 1000).toFixed(1)}s` : '**OFF**';
-    const far = tool ? tool.blocksPerBreak : 1;
     const ev = ud.event;
-    const stock = isUnlimited(ud.selectedBlock) ? '∞' : qty.toLocaleString();
+
+    // XP Progress bar
+    const xpPercent = ud.maxXp > 0 ? ud.xp / ud.maxXp : 0;
+    const barLength = 15;
+    const filled = Math.round(xpPercent * barLength);
+    const xpBar = '█'.repeat(Math.min(filled, barLength)) + '░'.repeat(Math.max(barLength - filled, 0));
+
+    // Auto farm status
+    const autoIcon = ud.autoFarm ? '▶️' : '⏸️';
+    const autoText = ud.autoFarm ? `**ON** · ${(interval / 1000).toFixed(1)}s` : '**OFF**';
+    const statusIcon = ud.autoFarm ? '🟢' : '⚪';
+
+    // Buff
+    const buffs = [];
+    if (isBuffActive(ud, 'arroz')) buffs.push(`🍗 Arroz · ${Math.ceil((ud.activeBuffs.arroz - Date.now()) / 1000)}s`);
+    if (isBuffActive(ud, 'clover')) buffs.push(`🍀 Clover · ${Math.ceil((ud.activeBuffs.clover - Date.now()) / 1000)}s`);
+    const buffText = buffs.length ? buffs.join('  ·  ') : '*Tidak ada buff aktif*';
+
+    // Tool
+    const toolText = tool
+        ? `${tool.emoji} **${tool.name}** x${tool.multiplier}  ·  ${tool.blocksPerBreak} far`
+        : '⚪ **Tidak ada** · 1 far';
+
+    // Stock block
+    const stockText = isUnlimited(ud.selectedBlock)
+        ? '∞'
+        : ud.blocks[ud.selectedBlock].toLocaleString();
+
     return new EmbedBuilder()
-        .setColor(ud.autoFarm ? '#2b2d31' : '#1e1f22')
-        .setTitle('🪓 Farming')
-        .setDescription(`**@${ud.username}** (Level: ${ud.level})\nXP: **${ud.xp.toLocaleString()}** / ${ud.maxXp.toLocaleString()}`)
+        .setColor(ud.autoFarm ? '#57F287' : '#2b2d31')
+        .setAuthor({ name: `🌾 Farming Panel — ${ud.username}` })
+        .setDescription(
+            `**Level ${ud.level}**  ·  ⭐ **${ud.skillPoints} SP**\n` +
+            `\`${xpBar}\`  **${Math.floor(xpPercent * 100)}%**\n` +
+            `📈 ${ud.xp.toLocaleString()} / ${ud.maxXp.toLocaleString()} XP`
+        )
         .addFields(
-            { name: '🎉 Event', value: `${ev.name} • Gems x${ev.gemsMult} | Blocks x${ev.blocksMult}`, inline: false },
-            { name: 'Tool:', value: tool ? `${tool.emoji} ${tool.name} x${tool.multiplier} • ${far} far` : `⚪ Tidak ada • 1 far`, inline: false },
-            { name: 'Buff:', value: getActiveBuffText(ud), inline: false },
-            { name: '⛏️ Block:', value: `${sel.emoji} ${sel.name} (${stock})`, inline: false },
-            { name: 'Inventory:', value: `🟫 ∞ | 🥔 ${ud.blocks.pog.toLocaleString()}`, inline: true },
-            { name: '💰 Gems:', value: Math.floor(ud.gems).toLocaleString(), inline: true },
-            { name: '⭐ SP:', value: `${ud.skillPoints}`, inline: true },
-            { name: 'Auto Farm:', value: auto, inline: false },
-            { name: 'Last Break:', value: ud.lastBreak, inline: false }
-        );
+            {
+                name: '📊  Status',
+                value:
+                    `🎉 **Event**  ·  ${ev.name}\n` +
+                    `💰 **Gems**  ·  ${Math.floor(ud.gems).toLocaleString()}\n` +
+                    `⛏️ **Mining**  ·  ${sel.emoji} ${sel.name} (${stockText})`,
+                inline: false
+            },
+            {
+                name: '🛠️  Tool & Buff',
+                value:
+                    `⚔️ ${toolText}\n` +
+                    `✨ ${buffText}`,
+                inline: false
+            },
+            {
+                name: `${statusIcon}  Auto Farm`,
+                value:
+                    `${autoIcon} ${autoText}\n` +
+                    `📝 *${ud.lastBreak}*`,
+                inline: false
+            }
+        )
+        .setFooter({ text: 'GrowExs Farming · Tekan tombol di bawah untuk mulai' })
+        .setTimestamp();
 }
 
+// ==========================================
+// 🎨 MAIN BUTTONS (3 tombol + 1 dropdown)
+// ==========================================
 function mainButtons(ud) {
-    const r1 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('btn_farm').setLabel('🌾 Farm').setStyle(ButtonStyle.Success).setDisabled(ud.autoFarm),
-        new ButtonBuilder().setCustomId('nav_change_block').setLabel('⛏️ Change Block').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('nav_event').setLabel('🎉 Event').setStyle(ButtonStyle.Danger)
+    // Baris 1: 3 tombol utama
+    const row1 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId('btn_farm')
+            .setLabel('Farm Manual')
+            .setEmoji('🌾')
+            .setStyle(ButtonStyle.Success)
+            .setDisabled(ud.autoFarm),
+        new ButtonBuilder()
+            .setCustomId('btn_toggle_auto')
+            .setLabel(ud.autoFarm ? 'Stop Auto' : 'Start Auto')
+            .setEmoji(ud.autoFarm ? '⏹️' : '▶️')
+            .setStyle(ud.autoFarm ? ButtonStyle.Danger : ButtonStyle.Primary),
+        new ButtonBuilder()
+            .setCustomId('nav_change_block')
+            .setLabel('Ganti Block')
+            .setEmoji('⛏️')
+            .setStyle(ButtonStyle.Secondary)
     );
-    const r2 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('nav_shop').setLabel('🛒 Shop').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('nav_items').setLabel('🎒 Items').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('nav_profile').setLabel('👤 Profile').setStyle(ButtonStyle.Primary)
+
+    // Baris 2: dropdown untuk menu lainnya
+    const row2 = new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+            .setCustomId('main_menu_select')
+            .setPlaceholder('📋  Buka menu lainnya...')
+            .addOptions(
+                new StringSelectMenuOptionBuilder()
+                    .setLabel('Shop')
+                    .setDescription('Beli tools, blocks, items, dan locks')
+                    .setValue('menu_shop')
+                    .setEmoji('🛒'),
+                new StringSelectMenuOptionBuilder()
+                    .setLabel('Items')
+                    .setDescription('Pakai buff Arroz / Clover')
+                    .setValue('menu_items')
+                    .setEmoji('🎒'),
+                new StringSelectMenuOptionBuilder()
+                    .setLabel('Profile')
+                    .setDescription('Lihat statistik lengkap kamu')
+                    .setValue('menu_profile')
+                    .setEmoji('👤'),
+                new StringSelectMenuOptionBuilder()
+                    .setLabel('Skills')
+                    .setDescription('Upgrade skill pakai SP')
+                    .setValue('menu_skills')
+                    .setEmoji('⭐'),
+                new StringSelectMenuOptionBuilder()
+                    .setLabel('Tools')
+                    .setDescription('Equip / ganti tool aktif')
+                    .setValue('menu_tools')
+                    .setEmoji('🛠️'),
+                new StringSelectMenuOptionBuilder()
+                    .setLabel('Event')
+                    .setDescription('Lihat event aktif saat ini')
+                    .setValue('menu_event')
+                    .setEmoji('🎉')
+            )
     );
-    const r3 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('nav_skills').setLabel('⭐ Skills').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('nav_tools').setLabel('🛠️ Tools').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('btn_toggle_auto')
-            .setLabel(ud.autoFarm ? 'Stop Auto Farm' : 'Start Auto Farm')
-            .setStyle(ud.autoFarm ? ButtonStyle.Danger : ButtonStyle.Success)
-    );
-    return [r1, r2, r3];
+
+    return [row1, row2];
 }
 
 function eventEmbed(ud) {
@@ -955,7 +1043,6 @@ client.once('ready', async () => {
     console.log(`🌐 ${client.guilds.cache.size} server`);
     await db.connectDB();
 
-    // Auto backup tiap 6 jam
     setInterval(() => {
         try {
             const src = path.join(__dirname, 'growexs.db');
@@ -967,7 +1054,6 @@ client.once('ready', async () => {
         } catch (e) {}
     }, 6 * 60 * 60 * 1000);
 
-    // Setup semua guild
     const cfgs = db.getAllGuildConfigs();
     for (const c of cfgs) {
         const g = client.guilds.cache.get(c.guildId);
@@ -976,7 +1062,6 @@ client.once('ready', async () => {
         await setupGuild(g, c.panelChannelId, c.leaderboardChannelId);
     }
 
-    // Leaderboard refresh loop
     setInterval(refreshAllLeaderboards, LEADERBOARD_UPDATE_INTERVAL);
 });
 
@@ -1007,12 +1092,10 @@ client.on('messageReactionRemove', async (r, u) => {
     try { await utility.handleReactionRemove(r, u); } catch (e) {}
 });
 
-// ===== VOICE STATE UPDATE =====
 client.on('voiceStateUpdate', async (oldState, newState) => {
     try { await voiceMod.handleVoiceStateUpdate(client, oldState, newState); } catch (e) {}
 });
 
-// ===== CHANNEL DELETE =====
 client.on('channelDelete', async (channel) => {
     try { await voiceMod.handleChannelDelete(client, channel); } catch (e) {}
 });
@@ -1187,6 +1270,8 @@ client.on('interactionCreate', async interaction => {
         // ==========================================
         if (interaction.isStringSelectMenu()) {
             const userId = interaction.user.id;
+
+            // ===== TOOL SELECT (existing) =====
             if (interaction.customId === 'select_tool') {
                 let ud = userCache.get(userId);
                 if (!ud) { ud = loadUser(userId, interaction.user.username); userCache.set(userId, ud); }
@@ -1214,7 +1299,40 @@ client.on('interactionCreate', async interaction => {
                 await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
                 activeMessages.set(userId, interaction.message);
                 try { await interaction.followUp({ content: msg, ephemeral: true }); } catch {}
+                return;
             }
+
+            // ===== BARU — MAIN MENU SELECT =====
+            if (interaction.customId === 'main_menu_select') {
+                let ud = userCache.get(userId);
+                if (!ud) { ud = loadUser(userId, interaction.user.username); userCache.set(userId, ud); }
+
+                if (autoFarmIntervals.has(userId)) {
+                    stopAutoFarm(userId);
+                    ud.autoFarm = false;
+                    ud.lastBreak = 'Auto Farm dimatikan (interaksi lain).';
+                    db.saveUser(ud);
+                }
+
+                const v = interaction.values[0];
+                const viewMap = {
+                    'menu_shop': 'shop',
+                    'menu_items': 'items',
+                    'menu_profile': 'profile',
+                    'menu_skills': 'skills',
+                    'menu_tools': 'tools',
+                    'menu_event': 'event'
+                };
+
+                if (viewMap[v]) {
+                    ud.currentView = viewMap[v];
+                }
+
+                await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+                activeMessages.set(userId, interaction.message);
+                return;
+            }
+
             return;
         }
 
