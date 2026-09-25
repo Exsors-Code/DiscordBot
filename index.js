@@ -80,6 +80,7 @@ const EMOJI = {
 // ⚙️ KONFIGURASI
 // ==========================================
 const LEADERBOARD_UPDATE_INTERVAL = 10000;
+const FARM_PANEL_UPDATE_INTERVAL = 10000;
 const EVENT_ROLE_IDS = ['1408101505008926840'];
 const EDIT_THROTTLE_MS = 3000;
 const INTERACTION_LOCK_MS = 1500;
@@ -134,7 +135,7 @@ const SHOP_TOOLS = {
 
 // ==========================================
 // 🪨 BLOCKS — 16 tier, dibeli pakai WL
-// Rate: 105-110% dari harga (farming untung tipis)
+// Rate: 105-110% dari harga
 // ==========================================
 const BLOCKS_LOW = {
     dirt:   { name: 'Dirt',   priceWL: 0,     gemsMin: 1,      gemsMax: 5,       xpMin: 1,       xpMax: 5,       emoji: EMOJI.dirt, unlimited: true },
@@ -164,7 +165,7 @@ const BLOCKS_HIGH = {
 const SHOP_BLOCKS = { ...BLOCKS_LOW, ...BLOCK_POG, ...BLOCKS_HIGH };
 
 // ==========================================
-// 🎁 ITEMS — dengan color, effect, detail lengkap
+// 🎁 ITEMS
 // ==========================================
 const SHOP_ITEMS = {
     arroz: {
@@ -315,6 +316,8 @@ const guildMemberCacheTime = new Map();
 const userLastInteraction = new Map();
 const userLastEdit = new Map();
 const afkCheckTimers = new Map();
+// 🆕 PANEL FARMING MESSAGE TRACKER
+const guildPanelMessages = new Map();
 
 // ==========================================
 // HELPER FUNCTIONS
@@ -406,6 +409,70 @@ function formatWL(v) {
 
 function formatStock(k, a) {
     return isUnlimited(k) ? '**∞ (Unlimited)**' : `**${a.toLocaleString()}**`;
+}
+
+// ==========================================
+// 📊 COUNT GUILD STATS — REALTIME
+// ==========================================
+async function countGuildStats(guildId) {
+    try {
+        const memberIds = await getGuildMemberIds(guildId);
+        const allUsers = db.getAllUsers();
+
+        let registered = 0;
+        let online = 0;
+
+        for (const ud of allUsers) {
+            if (!memberIds.has(ud.userId)) continue;
+            const thread = db.getUserThread(guildId, ud.userId);
+            if (!thread) continue;
+            registered++;
+            if (autoFarmIntervals.has(ud.userId)) online++;
+        }
+
+        return { online, registered };
+    } catch (e) {
+        console.error('countGuildStats error:', e.message);
+        return { online: 0, registered: 0 };
+    }
+}
+
+// ==========================================
+// 🎨 BUILD FARM PANEL EMBED (dengan stats)
+// ==========================================
+function buildFarmPanelEmbed(stats) {
+    return new EmbedBuilder()
+        .setColor('#57F287')
+        .setTitle('🌱 GrowExs Farming')
+        .setDescription(
+            'Welcome to **GrowExs**!\n\n' +
+            'Press **Start Farming** below or use `/farming` to open your private farming thread.\n' +
+            'Your thread contains your Farm, Shop, Items, Profile, Tools, and Skills menus.\n\n' +
+            'Your existing private farm thread will be reused whenever you run `/farming` again.\n\n' +
+            '⚠️ **Catatan**: Setiap interval tertentu kamu diminta konfirmasi "masih online".\n' +
+            'Kalau tidak direspon dalam waktu yang ditentukan, Auto Farm dimatikan & thread dihapus.'
+        )
+        .addFields(
+            { name: '🟢  Online Sekarang', value: `**${stats.online}** pemain`, inline: true },
+            { name: '👥  Terdaftar', value: `**${stats.registered}** pemain`, inline: true }
+        )
+        .setFooter({ text: `GrowExs Farm Guide · Update tiap ${FARM_PANEL_UPDATE_INTERVAL / 1000} detik` })
+        .setTimestamp();
+}
+
+// ==========================================
+// 🔄 REFRESH ALL FARM PANELS — REALTIME
+// ==========================================
+async function refreshAllFarmPanels() {
+    for (const [guildId, msg] of guildPanelMessages.entries()) {
+        try {
+            const stats = await countGuildStats(guildId);
+            const embed = buildFarmPanelEmbed(stats);
+            await msg.edit({ embeds: [embed] });
+        } catch (e) {
+            // Message mungkin sudah dihapus, skip
+        }
+    }
 }
 
 // ==========================================
@@ -1514,7 +1581,7 @@ async function invalidateOldPanel(userId, reason = 'Panel ini sudah tidak aktif.
 }
 
 // ==========================================
-// SETUP GUILD
+// SETUP GUILD — dengan PANEL REALTIME STATS
 // ==========================================
 async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
     try {
@@ -1522,7 +1589,9 @@ async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
         if (pc) {
             const msgs = await pc.messages.fetch({ limit: 50 }).catch(() => new Map());
             for (const m of msgs.values()) {
-                if (m.author.id === client.user.id && m.components.length > 0) await m.delete().catch(() => {});
+                if (m.author.id === client.user.id && m.components.length > 0) {
+                    await m.delete().catch(() => {});
+                }
             }
             let dt = 0;
             const safeDel = async (t) => {
@@ -1556,18 +1625,24 @@ async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
                     }
                 } catch {}
             }
-            const embed = new EmbedBuilder().setColor('#57F287').setTitle('🌱 GrowExs Farming')
-                .setDescription(
-                    'Welcome to **GrowExs**!\n\n' +
-                    'Press **Start Farming** below or use `/farming`.\n\n' +
-                    '⚠️ Setiap interval tertentu kamu diminta konfirmasi online. Kalau tidak direspon, Auto Farm mati & thread dihapus.'
-                ).setFooter({ text: 'GrowExs Farm Guide' });
+
+            // ===== KIRIM PANEL DENGAN STATS REALTIME =====
+            const stats = await countGuildStats(guild.id);
+            const embed = buildFarmPanelEmbed(stats);
+
             const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('start_farming').setLabel('Start Farming').setEmoji('📖').setStyle(ButtonStyle.Success)
+                new ButtonBuilder()
+                    .setCustomId('start_farming')
+                    .setLabel('Start Farming')
+                    .setEmoji('📖')
+                    .setStyle(ButtonStyle.Success)
             );
-            await pc.send({ embeds: [embed], components: [row] });
-            console.log(`📖 [${guild.name}] Panel terkirim (thread lama: ${dt})`);
+
+            const panelMsg = await pc.send({ embeds: [embed], components: [row] });
+            guildPanelMessages.set(guild.id, panelMsg);
+            console.log(`📖 [${guild.name}] Panel terkirim (thread lama: ${dt}) • Online: ${stats.online} / Terdaftar: ${stats.registered}`);
         }
+
         const lc = await client.channels.fetch(leaderboardChannelId).catch(() => null);
         if (lc) {
             const msgs = await lc.messages.fetch({ limit: 30 }).catch(() => new Map());
@@ -1577,7 +1652,9 @@ async function setupGuild(guild, panelChannelId, leaderboardChannelId) {
             db.updateLeaderboardMessage(guild.id, msg.id);
             console.log(`🏆 [${guild.name}] Leaderboard aktif`);
         }
-    } catch (err) { console.error(`❌ Setup guild ${guild.name}:`, err.message); }
+    } catch (err) {
+        console.error(`❌ Setup guild ${guild.name}:`, err.message);
+    }
 }
 
 // ==========================================
@@ -1588,7 +1665,7 @@ client.once('ready', async () => {
     console.log(`🌐 ${client.guilds.cache.size} server`);
     await db.connectDB();
 
-    // Auto backup tiap 6 jam
+    // ===== AUTO BACKUP tiap 6 jam =====
     setInterval(() => {
         try {
             const src = path.join(__dirname, 'growexs.db');
@@ -1602,7 +1679,7 @@ client.once('ready', async () => {
         }
     }, 6 * 60 * 60 * 1000);
 
-    // Setup semua guild
+    // ===== SETUP SEMUA GUILD =====
     const cfgs = db.getAllGuildConfigs();
     for (const c of cfgs) {
         const g = client.guilds.cache.get(c.guildId);
@@ -1611,8 +1688,13 @@ client.once('ready', async () => {
         await setupGuild(g, c.panelChannelId, c.leaderboardChannelId);
     }
 
-    // Leaderboard refresh loop
+    // ===== LEADERBOARD REFRESH LOOP =====
     setInterval(refreshAllLeaderboards, LEADERBOARD_UPDATE_INTERVAL);
+
+    // ===== FARM PANEL REFRESH LOOP (REALTIME STATS) =====
+    setInterval(refreshAllFarmPanels, FARM_PANEL_UPDATE_INTERVAL);
+
+    console.log(`📊 Refresh loop aktif — Leaderboard & Farm Panel tiap ${LEADERBOARD_UPDATE_INTERVAL / 1000}s`);
 });
 
 // ==========================================
@@ -1654,12 +1736,11 @@ client.on('channelDelete', async (channel) => {
 // 🎰 GACHA HELPER — Roll 1x
 // ==========================================
 function rollGacha(ud) {
-    // Total chance untuk weighted random
+    // Weighted random selection
     const totalChance = GACHA_CONFIG.prizes.reduce((sum, p) => sum + p.chance, 0);
     let roll = Math.random() * totalChance;
     let selected = GACHA_CONFIG.prizes[0];
 
-    // Pilih prize berdasarkan weighted chance
     for (const p of GACHA_CONFIG.prizes) {
         roll -= p.chance;
         if (roll <= 0) { selected = p; break; }
@@ -1713,7 +1794,6 @@ function rollGacha(ud) {
         result.extra = `${ANCES_RED.emoji} → Lv.${ud.items.ancesRedLevel}`;
     }
     else if (selected.type === 'gang') {
-        // Cek global supply (limited 100)
         const currentOwned = db.getGlobalStat('gang_owned');
         if (currentOwned >= GACHA_CONFIG.gangGlobalSupply) {
             result.success = false;
@@ -1822,6 +1902,7 @@ client.on('interactionCreate', async interaction => {
                 db.removeGuildConfig(interaction.guildId);
                 guildLeaderboards.delete(interaction.guildId);
                 guildMemberCache.delete(interaction.guildId);
+                guildPanelMessages.delete(interaction.guildId);
                 return interaction.reply({ content: `✅ Config dihapus.`, ephemeral: true });
             }
 
@@ -2211,7 +2292,7 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: `❌ GBC kurang! Butuh **${rolls}** ${EMOJI.gbc}, kamu punya **${gbcOwned}**`, ephemeral: true });
             }
 
-            // Kurangi GBC dulu (atomic)
+            // Kurangi GBC dulu
             ud.items.gbc -= rolls;
 
             const results = [];
