@@ -41,6 +41,43 @@ process.on('uncaughtException', (error) => {
 });
 
 // ==========================================
+// 🎨 EMOJI CONFIG
+// ==========================================
+const EMOJI = {
+    lray:     '<:lray:1552901313992335390>',
+    ancesred: '<:ancesred:1552900692895600640>',
+    bgl:      '<:bgl:1552900717780406303>',
+    black:    '<:black:1552900737221263500>',
+    dirt:     '<:dirt:1552900796763602985>',
+    dl:       '<:dl:1552900827130372168>',
+    fist:     '<:fist:1552900846725898282>',
+    gang:     '<:gang:1552900891651215430>',
+    gbc:      '<:gbc:1552901254177497179>',
+    gems:     '<:gems:1552901284443455528>',
+    pog:      '<:pog:1552901365704032256>',
+    mray:     '<:mray:1552901340005670932>',
+    rayman:   '<:rayman:1552901389120704623>',
+    wl:       '<:wl:1552901434834550824>',
+    gray:     '<:gray:1552905480815378552>',
+    // Unicode fallback
+    sand:     '🟨',
+    gravel:   '🪨',
+    grass:    '🌿',
+    clay:     '🧱',
+    stone:    '⬜',
+    iron:     '⚙️',
+    gold:     '🟡',
+    emerald:  '💚',
+    diamond:  '💎',
+    ruby:     '🔴',
+    sapphire: '🔵',
+    netherite:'⬛',
+    obsidian: '🟣',
+    bedrock:  '🔲',
+    lss:      '🗡️'
+};
+
+// ==========================================
 // ⚙️ KONFIGURASI
 // ==========================================
 const LEADERBOARD_UPDATE_INTERVAL = 10000;
@@ -49,6 +86,15 @@ const EDIT_THROTTLE_MS = 3000;
 const INTERACTION_LOCK_MS = 1500;
 const MEMBER_CACHE_TTL = 5 * 60 * 1000;
 
+// ===== ACTION LOCK (anti-dupe) =====
+const actionLocks = new Set();
+function lockUser(userId, ms = 1500) {
+    if (actionLocks.has(userId)) return false;
+    actionLocks.add(userId);
+    setTimeout(() => actionLocks.delete(userId), ms);
+    return true;
+}
+
 const UNLIMITED_BLOCKS = ['dirt'];
 function isUnlimited(k) { return UNLIMITED_BLOCKS.includes(k); }
 
@@ -56,13 +102,11 @@ const BASE_AUTO_INTERVAL = 5000;
 const AUTO_INTERVAL_REDUCTION = 200;
 const MIN_AUTO_INTERVAL = 3000;
 
-// ===== BARU — Time Warp effect =====
-const TIMEWARP_REDUCTION = 0.5; // 50% lebih cepat
-const TIMEWARP_DURATION = 60;   // 60 detik
+const TIMEWARP_REDUCTION = 0.5;
+const TIMEWARP_DURATION = 60;
 
 function getAutoInterval(ud) {
     let interval = Math.max(MIN_AUTO_INTERVAL, BASE_AUTO_INTERVAL - ud.skills.mining_speed * AUTO_INTERVAL_REDUCTION);
-    // Time Warp: kurangi interval 50% selama aktif
     if (isBuffActive(ud, 'timewarp')) {
         interval = Math.max(500, Math.floor(interval * TIMEWARP_REDUCTION));
     }
@@ -74,85 +118,147 @@ function getMaxXpForLevel(L) {
 }
 function getSkillUpgradeCost(lvl) { return Math.min(5, 1 + Math.floor(lvl / 2)); }
 
+// ==========================================
+// 🛠️ TOOLS
+// ==========================================
 const SHOP_TOOLS = {
-    lss:  { name: 'LSS',  price: 10000,    multiplier: 30,  invBonus: 5000,  blocksPerBreak: 3,  emoji: '🗡️' },
-    lray: { name: 'LRAY', price: 100000,   multiplier: 50,  invBonus: 10000, blocksPerBreak: 7,  emoji: '🔫' },
-    mray: { name: 'MRAY', price: 1000000,  multiplier: 100, invBonus: 15000, blocksPerBreak: 10, emoji: '⚔️' },
-    gray: { name: 'GRAY', price: 10000000, multiplier: 250, invBonus: 20000, blocksPerBreak: 15, emoji: '🌟' }
-};
-const SHOP_BLOCKS = {
-    dirt: { name: 'Dirt',        price: 100,  gemsMin: 1,  gemsMax: 5,   xpMin: 1,  xpMax: 5,   emoji: '🟫' },
-    pog:  { name: "Pot O' Gems", price: 5000, gemsMin: 85, gemsMax: 100, xpMin: 85, xpMax: 100, emoji: '🥔' }
+    lss:  { name: 'LSS',  price: 10000,    multiplier: 30,  blocksPerBreak: 3,  emoji: EMOJI.lss },
+    lray: { name: 'LRAY', price: 100000,   multiplier: 50,  blocksPerBreak: 7,  emoji: EMOJI.lray },
+    mray: { name: 'MRAY', price: 1000000,  multiplier: 100, blocksPerBreak: 10, emoji: EMOJI.mray },
+    gray: { name: 'GRAY', price: 10000000, multiplier: 250, blocksPerBreak: 15, emoji: EMOJI.gray }
 };
 
-// ===== ITEM LAMA + ITEM BARU =====
+// ==========================================
+// 🪨 BLOCKS — 16 tier (semua untung ~20%)
+// ==========================================
+// Tier bawah POG (murah, buat newbie):
+const BLOCKS_LOW = {
+    dirt:     { name: 'Dirt',     price: 0,    gemsMin: 1,    gemsMax: 5,      xpMin: 1,    xpMax: 5,      emoji: EMOJI.dirt,     unlimited: true },
+    sand:     { name: 'Sand',     price: 50,   gemsMin: 60,   gemsMax: 80,     xpMin: 30,   xpMax: 40,     emoji: EMOJI.sand },
+    gravel:   { name: 'Gravel',   price: 100,  gemsMin: 120,  gemsMax: 160,    xpMin: 60,   xpMax: 80,     emoji: EMOJI.gravel },
+    grass:    { name: 'Grass',    price: 200,  gemsMin: 240,  gemsMax: 310,    xpMin: 120,  xpMax: 155,    emoji: EMOJI.grass },
+    clay:     { name: 'Clay',     price: 400,  gemsMin: 480,  gemsMax: 620,    xpMin: 240,  xpMax: 310,    emoji: EMOJI.clay },
+    stone:    { name: 'Stone',    price: 750,  gemsMin: 900,  gemsMax: 1150,   xpMin: 450,  xpMax: 575,    emoji: EMOJI.stone },
+    iron:     { name: 'Iron',     price: 1200, gemsMin: 1440, gemsMax: 1860,   xpMin: 720,  xpMax: 930,    emoji: EMOJI.iron },
+    gold:     { name: 'Gold',     price: 1800, gemsMin: 2160, gemsMax: 2790,   xpMin: 1080, xpMax: 1395,   emoji: EMOJI.gold }
+};
+
+// POG = 1 WL per block
+const BLOCK_POG = {
+    pog: { name: "Pot O' Gems", price: 2000, gemsMin: 2400, gemsMax: 3100, xpMin: 1200, xpMax: 1550, emoji: EMOJI.pog }
+};
+
+// Tier atas POG (mahal, high-tier):
+const BLOCKS_HIGH = {
+    emerald:   { name: 'Emerald',   price: 5000,     gemsMin: 6000,      gemsMax: 7750,      xpMin: 3000,      xpMax: 3875,      emoji: EMOJI.emerald },
+    diamond:   { name: 'Diamond',   price: 10000,    gemsMin: 12000,     gemsMax: 15500,     xpMin: 6000,      xpMax: 7750,      emoji: EMOJI.diamond },
+    ruby:      { name: 'Ruby',      price: 25000,    gemsMin: 30000,     gemsMax: 38750,     xpMin: 15000,     xpMax: 19375,     emoji: EMOJI.ruby },
+    sapphire:  { name: 'Sapphire',  price: 50000,    gemsMin: 60000,     gemsMax: 77500,     xpMin: 30000,     xpMax: 38750,     emoji: EMOJI.sapphire },
+    netherite: { name: 'Netherite', price: 100000,   gemsMin: 120000,    gemsMax: 155000,    xpMin: 60000,     xpMax: 77500,     emoji: EMOJI.netherite },
+    obsidian:  { name: 'Obsidian',  price: 500000,   gemsMin: 600000,    gemsMax: 775000,    xpMin: 300000,    xpMax: 387500,    emoji: EMOJI.obsidian },
+    bedrock:   { name: 'Bedrock',   price: 1000000,  gemsMin: 1200000,   gemsMax: 1550000,   xpMin: 600000,    xpMax: 775000,    emoji: EMOJI.bedrock }
+};
+
+// Merge untuk lookup
+const SHOP_BLOCKS = { ...BLOCKS_LOW, ...BLOCK_POG, ...BLOCKS_HIGH };
+
+// ==========================================
+// 🎁 ITEMS
+// ==========================================
 const SHOP_ITEMS = {
-    // ===== ITEM LAMA (BUFF) =====
     arroz: {
-        name: 'Arroz Con Pollo',
-        price: 50000,
-        emoji: '🍗',
-        category: 'buff',
-        duration: 300,
-        desc: 'x2 Gems selama 5 menit',
-        color: '#E67E22'
+        name: 'Arroz Con Pollo', price: 50000, emoji: '🍗',
+        category: 'buff', duration: 300, desc: 'x2 Gems selama 5 menit', color: '#E67E22'
     },
     clover: {
-        name: 'Lucky Clover',
-        price: 250000,
-        emoji: '🍀',
-        category: 'buff',
-        duration: 300,
-        desc: 'x2 XP selama 5 menit',
-        color: '#2ECC71'
+        name: 'Lucky Clover', price: 250000, emoji: '🍀',
+        category: 'buff', duration: 300, desc: 'x2 XP selama 5 menit', color: '#2ECC71'
     },
-    // ===== ITEM BARU (GROWTOPIA-STYLE) =====
     gempack: {
-        name: 'Gem Pack',
-        price: 100000,
-        emoji: '💎',
-        category: 'instant',
-        effect: 'gems',
-        amount: 150000,          // instant +150k gems
-        desc: 'Buka untuk dapat +150.000 Gems instant',
-        color: '#3498DB'
+        name: 'Gem Pack', price: 100000, emoji: '💎',
+        category: 'instant', effect: 'gems', amount: 150000, desc: 'Buka untuk dapat +150.000 Gems instant', color: '#3498DB'
     },
     xpscroll: {
-        name: 'XP Scroll',
-        price: 150000,
-        emoji: '📜',
-        category: 'instant',
-        effect: 'xp',
-        amount: 50000,           // instant +50k XP
-        desc: 'Buka untuk dapat +50.000 XP instant',
-        color: '#9B59B6'
+        name: 'XP Scroll', price: 150000, emoji: '📜',
+        category: 'instant', effect: 'xp', amount: 50000, desc: 'Buka untuk dapat +50.000 XP instant', color: '#9B59B6'
     },
     bomb: {
-        name: 'Block Bomb',
-        price: 25000,
-        emoji: '💣',
-        category: 'instant',
-        effect: 'blocks',
-        amount: 100,             // +100 POG
-        desc: 'Meledakkan 100 Pot O\' Gems ke inventory',
-        color: '#E74C3C'
+        name: 'Block Bomb', price: 25000, emoji: '💣',
+        category: 'instant', effect: 'blocks', amount: 100, desc: "Meledakkan 100 Pot O' Gems ke inventory", color: '#E74C3C'
     },
     timewarp: {
-        name: 'Time Warp',
-        price: 500000,
-        emoji: '⏳',
-        category: 'buff',
-        duration: TIMEWARP_DURATION,
-        desc: 'Auto Farm 2x lebih cepat selama 60 detik',
-        color: '#F1C40F'
+        name: 'Time Warp', price: 500000, emoji: '⏳',
+        category: 'buff', duration: TIMEWARP_DURATION, desc: 'Auto Farm 2x lebih cepat selama 60 detik', color: '#F1C40F'
+    },
+    gbc: {
+        name: 'GBC (Gacha Box Crystal)', price: 50000, emoji: EMOJI.gbc,
+        category: 'gacha', desc: 'Tiket gacha — pakai di menu 🎰 Gacha', color: '#9B59B6'
     }
 };
 
-const SHOP_LOCKS = {
-    wl:  { name: 'WL',  emoji: '🔹', price: 2000 },
-    dl:  { name: 'DL',  emoji: '🔸', price: 200000 },
-    bgl: { name: 'BGL', emoji: '🔶', price: 20000000 }
+// ==========================================
+// 🔴 ANCES RED — Upgradeable Gem Booster
+// ==========================================
+const ANCES_RED = {
+    name: 'Ances Red',
+    emoji: EMOJI.ancesred,
+    maxLevel: 6,
+    bonuses: [0, 5, 10, 15, 20, 25, 35],
+    costs: [
+        { gems: 500000,   bgl: 0 },   // 0 → 1
+        { gems: 2000000,  bgl: 0 },   // 1 → 2
+        { gems: 10000000, bgl: 0 },   // 2 → 3
+        { gems: 50000000, bgl: 0 },   // 3 → 4
+        { gems: 0,        bgl: 1 },   // 4 → 5
+        { gems: 0,        bgl: 5 }    // 5 → 6
+    ]
 };
+
+// ==========================================
+// 🎰 GACHA CONFIG (unlimited)
+// ==========================================
+const GACHA_CONFIG = {
+    gangGlobalSupply: 100,  // ← 100 (bukan 1000)
+    prizes: [
+        // COMMON
+        { key: 'gems_50k',   type: 'gems',     amount: 50000,   chance: 20, label: '50.000 Gems' },
+        { key: 'xp_25k',     type: 'xp',       amount: 25000,   chance: 15, label: '25.000 XP' },
+        { key: 'gbc_1',      type: 'gbc',      amount: 1,       chance: 12, label: '1 GBC (roll lagi!)' },
+        { key: 'bomb_5',     type: 'bomb',     amount: 5,       chance: 8,  label: '5× Block Bomb' },
+        // UNCOMMON
+        { key: 'arroz_3',    type: 'arroz',    amount: 3,       chance: 8,  label: '3× Arroz' },
+        { key: 'clover_2',   type: 'clover',   amount: 2,       chance: 7,  label: '2× Clover' },
+        { key: 'gempack_2',  type: 'gempack',  amount: 2,       chance: 5,  label: '2× Gem Pack' },
+        { key: 'xpscroll_1', type: 'xpscroll', amount: 1,       chance: 5,  label: '1× XP Scroll' },
+        // RARE
+        { key: 'timewarp_1', type: 'timewarp', amount: 1,       chance: 5,  label: '1× Time Warp' },
+        { key: 'gems_500k',  type: 'gems',     amount: 500000,  chance: 5,  label: '500.000 Gems!' },
+        { key: 'ancesred_1', type: 'ancesred', amount: 1,       chance: 3,  label: '🔴 1× Ances Red!' },
+        { key: 'gems_2m',    type: 'gems',     amount: 2000000, chance: 2,  label: '2.000.000 Gems!!' },
+        // LEGENDARY
+        { key: 'gang_1',     type: 'gang',     amount: 1,       chance: 5,  label: '🎉 GANG! (limited)' }
+    ]
+};
+
+// ==========================================
+// 🦹 GANG — Item biasa (BUKAN upgradeable)
+// ==========================================
+const GANG = {
+    name: 'Gang',
+    emoji: EMOJI.gang,
+    maxCount: 6,       // max 6 gang (stack)
+    bonusPerGang: 5    // +5% gems per gang (max +30%)
+};
+
+// ==========================================
+// 🔒 LOCKS
+// ==========================================
+const SHOP_LOCKS = {
+    wl:  { name: 'WL',  emoji: EMOJI.wl,  price: 2000 },
+    dl:  { name: 'DL',  emoji: EMOJI.dl,  price: 200000 },
+    bgl: { name: 'BGL', emoji: EMOJI.bgl, price: 20000000 }
+};
+
 const SKILLS = {
     mining_speed:     { name: 'Mining Speed',     emoji: '⛏️', maxLevel: 10 },
     gem_hunter:       { name: 'Gem Hunter',       emoji: '💎', maxLevel: 10 },
@@ -182,13 +288,23 @@ const afkCheckTimers = new Map();
 // ==========================================
 // HELPER FUNCTIONS
 // ==========================================
-function getTotalBlocks(ud) { return ud.blocks.dirt + ud.blocks.pog; }
-
+function getTotalBlocks(ud) {
+    let total = 0;
+    for (const k in SHOP_BLOCKS) total += (ud.blocks[k] || 0);
+    return total;
+}
 function getTotalLockValue(ud) {
     return (ud.locks.wl * 1) + (ud.locks.dl * 100) + (ud.locks.bgl * 10000) + (ud.locks.bglb * 1000000);
 }
-
 function isBuffActive(ud, key) { return Date.now() < ud.activeBuffs[key]; }
+
+function getGemMultiplier(ud) {
+    const ancesLevel = ud.items.ancesRedLevel || 0;
+    const ancesBonus = ANCES_RED.bonuses[ancesLevel] || 0;
+    const gangCount = ud.items.gang || 0;
+    const gangBonus = Math.min(gangCount, GANG.maxCount) * GANG.bonusPerGang;
+    return 1 + ((ancesBonus + gangBonus) / 100);
+}
 
 function getActiveBuffText(ud) {
     const a = [];
@@ -236,11 +352,20 @@ async function getGuildMemberIds(guildId) {
 function loadUser(userId, username) {
     const ud = db.getUser(userId, username);
     ud.maxXp = getMaxXpForLevel(ud.level);
-    // Pastikan semua key item ada
+
+    // Pastikan semua block key ada
+    for (const k in SHOP_BLOCKS) {
+        if (ud.blocks[k] === undefined) ud.blocks[k] = 0;
+    }
+
+    // Pastikan item key ada
     if (!ud.items.gempack) ud.items.gempack = 0;
     if (!ud.items.xpscroll) ud.items.xpscroll = 0;
     if (!ud.items.bomb) ud.items.bomb = 0;
     if (!ud.items.timewarp) ud.items.timewarp = 0;
+    if (!ud.items.gbc) ud.items.gbc = 0;
+    if (!ud.items.gang) ud.items.gang = 0;
+    if (ud.items.ancesRedLevel === undefined) ud.items.ancesRedLevel = 0;
     if (!ud.activeBuffs.timewarp) ud.activeBuffs.timewarp = 0;
     return ud;
 }
@@ -254,38 +379,38 @@ function formatStock(k, a) {
 // ==========================================
 function mainEmbed(ud) {
     const tool = ud.equippedTool ? SHOP_TOOLS[ud.equippedTool] : null;
-    const sel = SHOP_BLOCKS[ud.selectedBlock];
+    const sel = SHOP_BLOCKS[ud.selectedBlock] || SHOP_BLOCKS.dirt;
     const interval = getAutoInterval(ud);
     const ev = ud.event;
 
-    // XP Progress bar
     const xpPercent = ud.maxXp > 0 ? ud.xp / ud.maxXp : 0;
     const barLength = 15;
     const filled = Math.round(xpPercent * barLength);
     const xpBar = '█'.repeat(Math.min(filled, barLength)) + '░'.repeat(Math.max(barLength - filled, 0));
 
-    // Auto farm status
     const autoIcon = ud.autoFarm ? '▶️' : '⏸️';
     const twActive = isBuffActive(ud, 'timewarp');
     const autoText = ud.autoFarm ? `**ON** · ${(interval / 1000).toFixed(1)}s${twActive ? ' ⚡' : ''}` : '**OFF**';
     const statusIcon = ud.autoFarm ? '🟢' : '⚪';
 
-    // Buff
     const buffs = [];
     if (isBuffActive(ud, 'arroz')) buffs.push(`🍗 Arroz · ${Math.ceil((ud.activeBuffs.arroz - Date.now()) / 1000)}s`);
     if (isBuffActive(ud, 'clover')) buffs.push(`🍀 Clover · ${Math.ceil((ud.activeBuffs.clover - Date.now()) / 1000)}s`);
     if (isBuffActive(ud, 'timewarp')) buffs.push(`⏳ Time Warp · ${Math.ceil((ud.activeBuffs.timewarp - Date.now()) / 1000)}s ⚡`);
     const buffText = buffs.length ? buffs.join('  ·  ') : '*Tidak ada buff aktif*';
 
-    // Tool
     const toolText = tool
         ? `${tool.emoji} **${tool.name}** x${tool.multiplier}  ·  ${tool.blocksPerBreak} far`
         : '⚪ **Tidak ada** · 1 far';
 
-    // Stock block
     const stockText = isUnlimited(ud.selectedBlock)
         ? '∞'
-        : ud.blocks[ud.selectedBlock].toLocaleString();
+        : (ud.blocks[ud.selectedBlock] || 0).toLocaleString();
+
+    const ancesLevel = ud.items.ancesRedLevel || 0;
+    const gangCount = ud.items.gang || 0;
+    const totalBoost = getGemMultiplier(ud);
+    const boostPercent = Math.round((totalBoost - 1) * 100);
 
     return new EmbedBuilder()
         .setColor(ud.autoFarm ? '#57F287' : '#2b2d31')
@@ -302,6 +427,14 @@ function mainEmbed(ud) {
                     `🎉 **Event**  ·  ${ev.name}\n` +
                     `💰 **Gems**  ·  ${Math.floor(ud.gems).toLocaleString()}\n` +
                     `⛏️ **Mining**  ·  ${sel.emoji} ${sel.name} (${stockText})`,
+                inline: false
+            },
+            {
+                name: '💎  Booster',
+                value:
+                    `${ANCES_RED.emoji} **Ances Red**  ·  Lv.${ancesLevel}/${ANCES_RED.maxLevel}\n` +
+                    `${GANG.emoji} **Gang**  ·  ${gangCount}/${GANG.maxCount}\n` +
+                    `✨ **Total Boost**  ·  **+${boostPercent}%** Gems`,
                 inline: false
             },
             {
@@ -324,10 +457,9 @@ function mainEmbed(ud) {
 }
 
 // ==========================================
-// 🎨 MAIN BUTTONS — tanpa Event
+// 🎨 MAIN BUTTONS
 // ==========================================
 function mainButtons(ud) {
-    // Baris 1: 3 tombol utama
     const row1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
             .setCustomId('btn_farm')
@@ -347,7 +479,6 @@ function mainButtons(ud) {
             .setStyle(ButtonStyle.Secondary)
     );
 
-    // Baris 2: dropdown untuk menu lainnya (tanpa Event)
     const row2 = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
             .setCustomId('main_menu_select')
@@ -363,6 +494,11 @@ function mainButtons(ud) {
                     .setDescription('Pakai buff & item instant')
                     .setValue('menu_items')
                     .setEmoji('🎒'),
+                new StringSelectMenuOptionBuilder()
+                    .setLabel('Gacha')
+                    .setDescription('Roll gacha pakai GBC — hadiah langka!')
+                    .setValue('menu_gacha')
+                    .setEmoji('🎰'),
                 new StringSelectMenuOptionBuilder()
                     .setLabel('Profile')
                     .setDescription('Lihat statistik lengkap kamu')
@@ -385,12 +521,12 @@ function mainButtons(ud) {
 }
 
 // ==========================================
-// EVENT EMBED (masih dipakai untuk halaman event)
+// EVENT
 // ==========================================
 function eventEmbed(ud) {
     const ev = ud.event;
     return new EmbedBuilder().setColor('#E91E63').setTitle('🎉 Event Aktif')
-        .setDescription(`### **${ev.name}**\n\n> 💰 **Gems Multiplier**: **x${ev.gemsMult}**\n> 🟫 **Blocks Multiplier**: **x${ev.blocksMult}**\n> 📈 XP juga kena multiplier Gems\n\n*Gunakan \`/customevent\` untuk mengubah.*`);
+        .setDescription(`### **${ev.name}**\n\n> 💰 **Gems Multiplier**: **x${ev.gemsMult}**\n> 🪨 **Blocks Multiplier**: **x${ev.blocksMult}**\n> 📈 XP juga kena multiplier Gems\n\n*Gunakan \`/customevent\` untuk mengubah.*`);
 }
 function eventButtons() {
     return [new ActionRowBuilder().addComponents(
@@ -399,14 +535,14 @@ function eventButtons() {
 }
 
 // ==========================================
-// SHOP EMBEDS
+// SHOP
 // ==========================================
 function shopMainEmbed(ud) {
     return new EmbedBuilder().setColor('#5865F2').setTitle('🛒 Shop').setDescription('Pilih kategori:')
         .addFields(
             { name: '🛠️ Tools', value: 'Tool boost farming', inline: true },
-            { name: '🟫 Blocks', value: 'Beli block', inline: true },
-            { name: '🎒 Items', value: 'Buff & instant item', inline: true },
+            { name: '🪨 Blocks', value: 'Beli block', inline: true },
+            { name: '🎒 Items', value: 'Buff, instant & gacha ticket', inline: true },
             { name: '🔒 Locks', value: 'Beli lock', inline: true }
         ).setFooter({ text: `Gems kamu: ${Math.floor(ud.gems).toLocaleString()}` });
 }
@@ -414,7 +550,7 @@ function shopMainButtons() {
     return [
         new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('nav_shop_tools').setLabel('🛠️ Tools').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('nav_shop_blocks').setLabel('🟫 Blocks').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('nav_shop_blocks').setLabel('🪨 Blocks').setStyle(ButtonStyle.Primary),
             new ButtonBuilder().setCustomId('nav_shop_items').setLabel('🎒 Items').setStyle(ButtonStyle.Primary),
             new ButtonBuilder().setCustomId('nav_shop_locks').setLabel('🔒 Locks').setStyle(ButtonStyle.Primary)
         ),
@@ -425,88 +561,215 @@ function shopMainButtons() {
 }
 
 function shopToolsEmbed(ud) {
-    const l = ['**🛠️ TOOLS**'];
+    const l = [`**${EMOJI.fist} TOOLS**`];
     for (const k in SHOP_TOOLS) {
         const t = SHOP_TOOLS[k];
         const o = ud.ownedTools.includes(k) ? ' ✅' : '';
-        l.push(`${t.emoji} **${t.name}**${o} — ${t.price.toLocaleString()} 💰\n> x${t.multiplier} Gems | ⛏️ **${t.blocksPerBreak} far**`);
+        l.push(`${t.emoji} **${t.name}**${o} — ${t.price.toLocaleString()} ${EMOJI.gems}\n> x${t.multiplier} Gems | ⛏️ **${t.blocksPerBreak} far**`);
     }
     return new EmbedBuilder().setColor('#5865F2').setTitle('🛒 Shop — Tools')
         .setDescription(l.join('\n\n'))
         .setFooter({ text: `Gems kamu: ${Math.floor(ud.gems).toLocaleString()}` });
 }
 function shopToolsButtons() {
-    return [
-        new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('buy_lss').setLabel('LSS').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('buy_lray').setLabel('LRAY').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('buy_mray').setLabel('MRAY').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('buy_gray').setLabel('GRAY').setStyle(ButtonStyle.Success)
-        ),
-        new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('nav_shop').setLabel('⬅️ Kategori').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary)
-        )
-    ];
+    const rows = [];
+    const keys = Object.keys(SHOP_TOOLS);
+    for (let i = 0; i < keys.length; i += 4) {
+        const row = new ActionRowBuilder();
+        for (let j = i; j < Math.min(i + 4, keys.length); j++) {
+            const k = keys[j];
+            row.addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`buy_${k}`)
+                    .setLabel(SHOP_TOOLS[k].name)
+                    .setStyle(ButtonStyle.Success)
+            );
+        }
+        rows.push(row);
+    }
+    rows.push(new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('nav_shop').setLabel('⬅️ Kategori').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary)
+    ));
+    return rows;
 }
 
-function shopBlocksEmbed(ud) {
-    const l = ['**BELI BLOCK**', ''];
-    for (const k in SHOP_BLOCKS) {
-        const b = SHOP_BLOCKS[k];
-        const u = isUnlimited(k) ? ' ♾️ **(Unlimited)**' : '';
-        l.push(`${b.emoji} **${b.name}**${u}\n> Reward: **${b.gemsMin}-${b.gemsMax}** | **${b.xpMin}-${b.xpMax} XP**\n> 📦 Stok: ${formatStock(k, ud.blocks[k])}`);
+// ==========================================
+// SHOP BLOCKS — 3 halaman (low, pog, high)
+// ==========================================
+function shopBlocksEmbed(ud, page = 'low') {
+    const l = [];
+    let title = '🛒 Shop — Blocks';
+
+    if (page === 'low') {
+        title = '🛒 Shop — Blocks (Low Tier)';
+        l.push(`**🪨 BLOCK MURAH** *(+20% profit dari harga)*`, '');
+        for (const k in BLOCKS_LOW) {
+            const b = BLOCKS_LOW[k];
+            const priceLabel = b.unlimited ? '**∞ (Unlimited)**' : `${b.price.toLocaleString()} ${EMOJI.gems}`;
+            l.push(`${b.emoji} **${b.name}** — ${priceLabel}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems | **${b.xpMin}-${b.xpMax} XP**\n> 📦 Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+        }
     }
-    return new EmbedBuilder().setColor('#8B4513').setTitle('🛒 Shop — Blocks')
+    else if (page === 'pog') {
+        title = '🛒 Shop — Blocks (POG)';
+        l.push(`**🥔 POT O\' GEMS** *(1 WL per block, profit ~20%)*`, '');
+        for (const k in BLOCK_POG) {
+            const b = BLOCK_POG[k];
+            l.push(`${b.emoji} **${b.name}** — ${b.price.toLocaleString()} ${EMOJI.gems} *(1 WL)*\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems | **${b.xpMin}-${b.xpMax} XP**\n> 📦 Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+        }
+    }
+    else {
+        title = '🛒 Shop — Blocks (High Tier)';
+        l.push(`**💎 BLOCK MAHAL** *(+20% profit dari harga)*`, '');
+        for (const k in BLOCKS_HIGH) {
+            const b = BLOCKS_HIGH[k];
+            l.push(`${b.emoji} **${b.name}** — ${b.price.toLocaleString()} ${EMOJI.gems}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems | **${b.xpMin}-${b.xpMax} XP**\n> 📦 Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+        }
+    }
+
+    return new EmbedBuilder().setColor('#8B4513').setTitle(title)
         .setDescription(l.join('\n\n'))
-        .setFooter({ text: `Gems kamu: ${Math.floor(ud.gems).toLocaleString()}` });
-}
-function shopBlocksButtons() {
-    return [
-        new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('customblock_pog').setLabel('🥔 Beli POG').setStyle(ButtonStyle.Success)
-        ),
-        new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('nav_shop').setLabel('⬅️ Kategori').setStyle(ButtonStyle.Secondary),
-            new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary)
-        )
-    ];
+        .setFooter({ text: `Gems kamu: ${Math.floor(ud.gems).toLocaleString()} • Page: ${page}` });
 }
 
-function changeBlockEmbed(ud) {
-    const l = ['**⛏️ Ganti Block Aktif**', ''];
-    for (const k in SHOP_BLOCKS) {
-        const b = SHOP_BLOCKS[k];
-        const s = ud.selectedBlock === k ? ' **[AKTIF]**' : '';
-        l.push(`${b.emoji} **${b.name}**${s}\n> Reward: **${b.gemsMin}-${b.gemsMax}** | **${b.xpMin}-${b.xpMax} XP**\n> Stok: ${formatStock(k, ud.blocks[k])}`);
+function shopBlocksButtons(ud, page = 'low') {
+    // Nav row
+    const navRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+            .setCustomId('shop_blocks_page_low')
+            .setLabel('🪨 Low Tier')
+            .setStyle(page === 'low' ? ButtonStyle.Success : ButtonStyle.Secondary)
+            .setDisabled(page === 'low'),
+        new ButtonBuilder()
+            .setCustomId('shop_blocks_page_pog')
+            .setLabel('🥔 POG')
+            .setStyle(page === 'pog' ? ButtonStyle.Success : ButtonStyle.Secondary)
+            .setDisabled(page === 'pog'),
+        new ButtonBuilder()
+            .setCustomId('shop_blocks_page_high')
+            .setLabel('💎 High Tier')
+            .setStyle(page === 'high' ? ButtonStyle.Success : ButtonStyle.Secondary)
+            .setDisabled(page === 'high')
+    );
+
+    // Buy buttons untuk page ini
+    const currentBlocks = page === 'low' ? BLOCKS_LOW : (page === 'pog' ? BLOCK_POG : BLOCKS_HIGH);
+    const buyRow1 = new ActionRowBuilder();
+    const buyRow2 = new ActionRowBuilder();
+    let count = 0;
+
+    for (const k in currentBlocks) {
+        const b = currentBlocks[k];
+        if (b.unlimited) continue;
+
+        const btn = new ButtonBuilder()
+            .setCustomId(`customblock_${k}`)
+            .setLabel(`Beli ${b.name}`)
+            .setStyle(ButtonStyle.Primary);
+
+        if (count < 5) buyRow1.addComponents(btn);
+        else buyRow2.addComponents(btn);
+        count++;
     }
-    return new EmbedBuilder().setColor('#8B4513').setTitle('⛏️ Change Block').setDescription(l.join('\n\n'));
-}
-function changeBlockButtons(ud) {
-    const d = isUnlimited('dirt') ? '∞' : ud.blocks.dirt.toLocaleString();
-    return [
-        new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('selectblock_dirt').setLabel(`🟫 Dirt (${d})`)
-                .setStyle(ud.selectedBlock === 'dirt' ? ButtonStyle.Success : ButtonStyle.Primary)
-                .setDisabled(ud.selectedBlock === 'dirt'),
-            new ButtonBuilder().setCustomId('selectblock_pog').setLabel(`🥔 POG (${ud.blocks.pog.toLocaleString()})`)
-                .setStyle(ud.selectedBlock === 'pog' ? ButtonStyle.Success : ButtonStyle.Primary)
-                .setDisabled(ud.selectedBlock === 'pog' || ud.blocks.pog <= 0)
-        ),
-        new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary)
-        )
-    ];
+
+    const rows = [navRow];
+    if (buyRow1.components.length > 0) rows.push(buyRow1);
+    if (buyRow2.components.length > 0) rows.push(buyRow2);
+
+    rows.push(new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('nav_shop').setLabel('⬅️ Kategori').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary)
+    ));
+
+    return rows;
 }
 
+// ==========================================
+// CHANGE BLOCK — paginated
+// ==========================================
+function changeBlockEmbed(ud, page = 'low') {
+    const l = [];
+    let title = '⛏️ Ganti Block Aktif';
+
+    if (page === 'low') {
+        title = '⛏️ Ganti Block — Low Tier';
+        for (const k in BLOCKS_LOW) {
+            const b = BLOCKS_LOW[k];
+            const s = ud.selectedBlock === k ? ' **[AKTIF]**' : '';
+            l.push(`${b.emoji} **${b.name}**${s}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems\n> Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+        }
+    } else if (page === 'pog') {
+        title = '⛏️ Ganti Block — POG';
+        for (const k in BLOCK_POG) {
+            const b = BLOCK_POG[k];
+            const s = ud.selectedBlock === k ? ' **[AKTIF]**' : '';
+            l.push(`${b.emoji} **${b.name}**${s}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems\n> Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+        }
+    } else {
+        title = '⛏️ Ganti Block — High Tier';
+        for (const k in BLOCKS_HIGH) {
+            const b = BLOCKS_HIGH[k];
+            const s = ud.selectedBlock === k ? ' **[AKTIF]**' : '';
+            l.push(`${b.emoji} **${b.name}**${s}\n> Reward: **${b.gemsMin.toLocaleString()}-${b.gemsMax.toLocaleString()}** Gems\n> Stok: ${formatStock(k, ud.blocks[k] || 0)}`);
+        }
+    }
+
+    return new EmbedBuilder().setColor('#8B4513').setTitle(title).setDescription(l.join('\n\n'))
+        .setFooter({ text: `Page: ${page}` });
+}
+
+function changeBlockButtons(ud, page = 'low') {
+    const navRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('change_block_page_low').setLabel('🪨 Low').setStyle(page === 'low' ? ButtonStyle.Success : ButtonStyle.Secondary).setDisabled(page === 'low'),
+        new ButtonBuilder().setCustomId('change_block_page_pog').setLabel('🥔 POG').setStyle(page === 'pog' ? ButtonStyle.Success : ButtonStyle.Secondary).setDisabled(page === 'pog'),
+        new ButtonBuilder().setCustomId('change_block_page_high').setLabel('💎 High').setStyle(page === 'high' ? ButtonStyle.Success : ButtonStyle.Secondary).setDisabled(page === 'high')
+    );
+
+    const currentBlocks = page === 'low' ? BLOCKS_LOW : (page === 'pog' ? BLOCK_POG : BLOCKS_HIGH);
+    const selectRow1 = new ActionRowBuilder();
+    const selectRow2 = new ActionRowBuilder();
+    let count = 0;
+
+    for (const k in currentBlocks) {
+        const b = currentBlocks[k];
+        const stock = isUnlimited(k) ? '∞' : (ud.blocks[k] || 0).toLocaleString();
+        const isSelected = ud.selectedBlock === k;
+        const isDisabled = isSelected || (!isUnlimited(k) && (ud.blocks[k] || 0) <= 0);
+
+        const btn = new ButtonBuilder()
+            .setCustomId(`selectblock_${k}`)
+            .setLabel(`${b.name} (${stock})`)
+            .setStyle(isSelected ? ButtonStyle.Success : ButtonStyle.Primary)
+            .setDisabled(isDisabled);
+
+        if (count < 5) selectRow1.addComponents(btn);
+        else selectRow2.addComponents(btn);
+        count++;
+    }
+
+    const rows = [navRow];
+    if (selectRow1.components.length > 0) rows.push(selectRow1);
+    if (selectRow2.components.length > 0) rows.push(selectRow2);
+    rows.push(new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary)
+    ));
+    return rows;
+}
+
+// ==========================================
+// SHOP ITEMS
+// ==========================================
 function shopItemsEmbed(ud) {
     const buffs = [];
     const instant = [];
+    const gacha = [];
 
     for (const k in SHOP_ITEMS) {
         const i = SHOP_ITEMS[k];
-        const line = `${i.emoji} **${i.name}** — ${i.price.toLocaleString()} 💰\n> ${i.desc}\n> 📦 Dimiliki: **${ud.items[k] || 0}**`;
+        const priceLabel = `${i.price.toLocaleString()} ${EMOJI.gems}`;
+        const line = `${i.emoji} **${i.name}** — ${priceLabel}\n> ${i.desc}\n> 📦 Dimiliki: **${ud.items[k] || 0}**`;
         if (i.category === 'buff') buffs.push(line);
+        else if (i.category === 'gacha') gacha.push(line);
         else instant.push(line);
     }
 
@@ -514,12 +777,12 @@ function shopItemsEmbed(ud) {
         .setColor('#5865F2')
         .setTitle('🛒 Shop — Items')
         .setDescription(
-            `**✨ BUFF ITEM** *(efek sementara)*\n\n${buffs.join('\n\n')}\n\n` +
-            `**⚡ INSTANT ITEM** *(efek langsung)*\n\n${instant.join('\n\n')}`
+            `**✨ BUFF ITEM**\n\n${buffs.join('\n\n')}\n\n` +
+            `**⚡ INSTANT ITEM**\n\n${instant.join('\n\n')}\n\n` +
+            `**🎰 GACHA ITEM**\n\n${gacha.join('\n\n')}`
         )
         .setFooter({ text: `Gems kamu: ${Math.floor(ud.gems).toLocaleString()}` });
 }
-
 function shopItemsButtons() {
     return [
         new ActionRowBuilder().addComponents(
@@ -533,6 +796,9 @@ function shopItemsButtons() {
             new ButtonBuilder().setCustomId('buy_bomb').setLabel('💣 Beli Block Bomb').setStyle(ButtonStyle.Primary)
         ),
         new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('buy_gbc').setLabel('Beli GBC (Gacha Ticket)').setEmoji(EMOJI.gbc).setStyle(ButtonStyle.Danger)
+        ),
+        new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('nav_shop').setLabel('⬅️ Kategori').setStyle(ButtonStyle.Secondary),
             new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary)
         )
@@ -543,9 +809,9 @@ function shopLocksEmbed(ud) {
     const l = ['**BELI LOCK**', ''];
     for (const k in SHOP_LOCKS) {
         const x = SHOP_LOCKS[k];
-        l.push(`${x.emoji} **${x.name}** — ${x.price.toLocaleString()} 💰/lock\n> 📦 Kamu punya: **${ud.locks[k].toLocaleString()}**`);
+        l.push(`${x.emoji} **${x.name}** — ${x.price.toLocaleString()} ${EMOJI.gems}/lock\n> 📦 Kamu punya: **${ud.locks[k].toLocaleString()}**`);
     }
-    l.push(`\n**Auto-convert:** 100 WL → 1 DL | 100 DL → 1 BGL | 100 BGL → 1 BGLB`);
+    l.push(`\n**Auto-convert:** 100 ${EMOJI.wl} → 1 ${EMOJI.dl} → 1 ${EMOJI.bgl} → 1 ${EMOJI.black}`);
     return new EmbedBuilder().setColor('#F1C40F').setTitle('🛒 Shop — Locks')
         .setDescription(l.join('\n\n'))
         .setFooter({ text: `Gems kamu: ${Math.floor(ud.gems).toLocaleString()}` });
@@ -553,9 +819,9 @@ function shopLocksEmbed(ud) {
 function shopLocksButtons() {
     return [
         new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('customlock_wl').setLabel('🔹 Beli WL').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('customlock_dl').setLabel('🔸 Beli DL').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId('customlock_bgl').setLabel('🔶 Beli BGL').setStyle(ButtonStyle.Success)
+            new ButtonBuilder().setCustomId('customlock_wl').setLabel('Beli WL').setEmoji(EMOJI.wl).setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId('customlock_dl').setLabel('Beli DL').setEmoji(EMOJI.dl).setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId('customlock_bgl').setLabel('Beli BGL').setEmoji(EMOJI.bgl).setStyle(ButtonStyle.Success)
         ),
         new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId('nav_shop').setLabel('⬅️ Kategori').setStyle(ButtonStyle.Secondary),
@@ -608,44 +874,40 @@ function skillsButtons(ud) {
 }
 
 // ==========================================
-// ITEMS (INVENTORY) — BARU
+// ITEMS (INVENTORY)
 // ==========================================
 function itemsEmbed(ud) {
-    const lines = [];
-
-    // Buff items
     const buffs = [];
     if (ud.items.arroz > 0) buffs.push(`🍗 **Arroz Con Pollo** ×${ud.items.arroz}\n> x2 Gems selama 5 menit`);
     if (ud.items.clover > 0) buffs.push(`🍀 **Lucky Clover** ×${ud.items.clover}\n> x2 XP selama 5 menit`);
-    if (ud.items.timewarp > 0) buffs.push(`⏳ **Time Warp** ×${ud.items.timewarp}\n> Auto Farm 2x lebih cepat selama 60 detik`);
+    if (ud.items.timewarp > 0) buffs.push(`⏳ **Time Warp** ×${ud.items.timewarp}\n> Auto Farm 2x lebih cepat 60 detik`);
 
-    // Instant items
     const instants = [];
     if (ud.items.gempack > 0) instants.push(`💎 **Gem Pack** ×${ud.items.gempack}\n> +150.000 Gems instant`);
     if (ud.items.xpscroll > 0) instants.push(`📜 **XP Scroll** ×${ud.items.xpscroll}\n> +50.000 XP instant`);
-    if (ud.items.bomb > 0) instants.push(`💣 **Block Bomb** ×${ud.items.bomb}\n> +100 Pot O' Gems ke inventory`);
+    if (ud.items.bomb > 0) instants.push(`💣 **Block Bomb** ×${ud.items.bomb}\n> +100 Pot O' Gems`);
 
-    if (buffs.length === 0 && instants.length === 0) {
-        return new EmbedBuilder()
-            .setColor('#E67E22')
-            .setTitle('🎒 Items')
-            .setDescription('*Inventory kosong.*\n\n> Beli item di **🛒 Shop → 🎒 Items**');
-    }
+    const others = [];
+    if (ud.items.gbc > 0) others.push(`${EMOJI.gbc} **GBC** ×${ud.items.gbc}\n> Tiket gacha`);
 
-    let desc = '';
+    const ancesLevel = ud.items.ancesRedLevel || 0;
+    const gangCount = ud.items.gang || 0;
+    const passive = [];
+    passive.push(`${ANCES_RED.emoji} **Ances Red**  ·  Lv.**${ancesLevel}/${ANCES_RED.maxLevel}**  ·  +${ANCES_RED.bonuses[ancesLevel]}% Gems`);
+    passive.push(`${GANG.emoji} **Gang**  ·  **${gangCount}/${GANG.maxCount}**  ·  +${Math.min(gangCount, GANG.maxCount) * GANG.bonusPerGang}% Gems`);
+
+    let desc = `**🔴 PASSIVE BOOSTER**\n\n${passive.join('\n')}\n\n`;
     if (buffs.length > 0) desc += `**✨ BUFF ITEM**\n\n${buffs.join('\n\n')}\n\n`;
-    if (instants.length > 0) desc += `**⚡ INSTANT ITEM**\n\n${instants.join('\n\n')}`;
+    if (instants.length > 0) desc += `**⚡ INSTANT ITEM**\n\n${instants.join('\n\n')}\n\n`;
+    if (others.length > 0) desc += `**🎰 GACHA**\n\n${others.join('\n\n')}`;
+    if (buffs.length === 0 && instants.length === 0 && others.length === 0) desc += `\n\n*Inventory item kosong.*`;
 
-    return new EmbedBuilder()
-        .setColor('#E67E22')
-        .setTitle('🎒 Items')
-        .setDescription(desc);
+    return new EmbedBuilder().setColor('#E67E22').setTitle('🎒 Items').setDescription(desc);
 }
 
 function itemsButtons(ud) {
     const rows = [];
 
-    // Baris 1: Buff items
     const buffRow = new ActionRowBuilder();
     if (ud.items.arroz > 0) buffRow.addComponents(
         new ButtonBuilder().setCustomId('use_arroz').setLabel(`🍗 Arroz (${ud.items.arroz})`).setStyle(ButtonStyle.Primary)
@@ -658,7 +920,6 @@ function itemsButtons(ud) {
     );
     if (buffRow.components.length > 0) rows.push(buffRow);
 
-    // Baris 2: Instant items
     const instRow = new ActionRowBuilder();
     if (ud.items.gempack > 0) instRow.addComponents(
         new ButtonBuilder().setCustomId('use_gempack').setLabel(`💎 Gem Pack (${ud.items.gempack})`).setStyle(ButtonStyle.Success)
@@ -667,16 +928,85 @@ function itemsButtons(ud) {
         new ButtonBuilder().setCustomId('use_xpscroll').setLabel(`📜 XP Scroll (${ud.items.xpscroll})`).setStyle(ButtonStyle.Success)
     );
     if (ud.items.bomb > 0) instRow.addComponents(
-        new ButtonBuilder().setCustomId('use_bomb').setLabel(`💣 Block Bomb (${ud.items.bomb})`).setStyle(ButtonStyle.Success)
+        new ButtonBuilder().setCustomId('use_bomb').setLabel(`💣 Bomb (${ud.items.bomb})`).setStyle(ButtonStyle.Success)
     );
     if (instRow.components.length > 0) rows.push(instRow);
 
-    // Baris terakhir: main menu
+    // Tombol upgrade Ances Red
+    const ancesLevel = ud.items.ancesRedLevel || 0;
+    if (ancesLevel < ANCES_RED.maxLevel) {
+        const cost = ANCES_RED.costs[ancesLevel];
+        const costText = cost.gems > 0 ? `${cost.gems.toLocaleString()} Gems` : `${cost.bgl} BGL`;
+        rows.push(new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('upgrade_ancesred')
+                .setLabel(`Upgrade Ances Red → Lv.${ancesLevel + 1} (${costText})`)
+                .setEmoji(EMOJI.ancesred)
+                .setStyle(ButtonStyle.Danger)
+        ));
+    }
+
     rows.push(new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary)
     ));
 
     return rows;
+}
+
+// ==========================================
+// 🎰 GACHA EMBED (unlimited)
+// ==========================================
+function gachaEmbed(ud) {
+    const cfg = GACHA_CONFIG;
+    const gangGlobalOwned = db.getGlobalStat('gang_owned');
+    const gangRemaining = Math.max(0, cfg.gangGlobalSupply - gangGlobalOwned);
+
+    const prizeLines = [];
+    for (const p of cfg.prizes) {
+        const isGang = p.type === 'gang';
+        const isAnces = p.type === 'ancesred';
+        const mark = isGang ? '🎉 ' : (isAnces ? '🔴 ' : '');
+        prizeLines.push(`**${p.chance}%** ${mark}${p.label}`);
+    }
+
+    return new EmbedBuilder()
+        .setColor('#9B59B6')
+        .setTitle('🎰 Gacha — Lucky Roll')
+        .setDescription(
+            `Coba keberuntunganmu! Pakai ${EMOJI.gbc} **GBC** untuk roll.\n\n` +
+            `${EMOJI.gbc} **GBC kamu:** **${ud.items.gbc || 0}**\n` +
+            `🎯 **Total roll:** ${ud.totalGachaRolls}\n` +
+            `${GANG.emoji} **Gang global:** ${gangGlobalOwned}/${cfg.gangGlobalSupply} *(${gangRemaining} sisa)*`
+        )
+        .addFields({
+            name: '🎁  Hadiah & Persentase',
+            value: prizeLines.join('\n'),
+            inline: false
+        })
+        .setFooter({ text: '1 roll = 1 GBC • Tanpa limit harian' })
+        .setTimestamp();
+}
+
+function gachaButtons(ud) {
+    const gbc = ud.items.gbc || 0;
+    return [
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('gacha_roll_1')
+                .setLabel('🎲 Roll 1x')
+                .setStyle(ButtonStyle.Success)
+                .setDisabled(gbc < 1),
+            new ButtonBuilder()
+                .setCustomId('gacha_roll_10')
+                .setLabel('🎲 Roll 10x')
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(gbc < 10)
+        ),
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('nav_shop_items').setLabel('🛒 Beli GBC').setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary)
+        )
+    ];
 }
 
 // ==========================================
@@ -716,18 +1046,27 @@ function toolsButtons(ud) {
 function profileEmbed(ud) {
     const t = ud.equippedTool ? SHOP_TOOLS[ud.equippedTool] : null;
     const tv = getTotalLockValue(ud);
+    const ancesLevel = ud.items.ancesRedLevel || 0;
+    const gangCount = ud.items.gang || 0;
+    const totalBoost = getGemMultiplier(ud);
     return new EmbedBuilder().setColor('#F1C40F').setTitle(`👤 Profile — ${ud.username}`)
         .addFields(
             { name: '🏆 Level', value: `${ud.level}`, inline: true },
             { name: '🛠️ Tool', value: t ? `${t.emoji} ${t.name}` : 'Tidak ada', inline: true },
             { name: '💰 Gems', value: Math.floor(ud.gems).toLocaleString(), inline: true },
-            { name: '🥔 POG', value: ud.blocks.pog.toLocaleString(), inline: true },
+            { name: `${EMOJI.pog} POG`, value: (ud.blocks.pog || 0).toLocaleString(), inline: true },
             { name: '⭐ SP', value: `${ud.skillPoints}`, inline: true },
+            { name: '🎰 Total Roll', value: `${ud.totalGachaRolls}`, inline: true },
+            { name: '💎 Booster', value:
+                `${ANCES_RED.emoji} **Ances Red** · Lv.${ancesLevel}/${ANCES_RED.maxLevel}\n` +
+                `${GANG.emoji} **Gang** · ${gangCount}/${GANG.maxCount}\n` +
+                `✨ **Total Boost** · **+${Math.round((totalBoost - 1) * 100)}%** Gems`,
+                inline: false },
             { name: '🔒 Locks', value:
-                `🔹 **WL**: ${ud.locks.wl.toLocaleString()}\n` +
-                `🔸 **DL**: ${ud.locks.dl.toLocaleString()}\n` +
-                `🔶 **BGL**: ${ud.locks.bgl.toLocaleString()}\n` +
-                `🌟 **BGLB**: ${ud.locks.bglb.toLocaleString()}\n` +
+                `${EMOJI.wl} **WL**: ${ud.locks.wl.toLocaleString()}\n` +
+                `${EMOJI.dl} **DL**: ${ud.locks.dl.toLocaleString()}\n` +
+                `${EMOJI.bgl} **BGL**: ${ud.locks.bgl.toLocaleString()}\n` +
+                `${EMOJI.black} **BGLB**: ${ud.locks.bglb.toLocaleString()}\n` +
                 `**Total: ${tv.toLocaleString()} WL**`, inline: false }
         );
 }
@@ -755,10 +1094,10 @@ async function generateLeaderboardEmbed(guildId) {
     const lines = top.map((e, i) => {
         const r = medals[i] || `**#${i + 1}**`;
         const p = [];
-        if (e.locks.wl > 0) p.push(`🔹 ${e.locks.wl}`);
-        if (e.locks.dl > 0) p.push(`🔸 ${e.locks.dl}`);
-        if (e.locks.bgl > 0) p.push(`🔶 ${e.locks.bgl}`);
-        if (e.locks.bglb > 0) p.push(`🌟 ${e.locks.bglb}`);
+        if (e.locks.wl > 0) p.push(`${EMOJI.wl} ${e.locks.wl}`);
+        if (e.locks.dl > 0) p.push(`${EMOJI.dl} ${e.locks.dl}`);
+        if (e.locks.bgl > 0) p.push(`${EMOJI.bgl} ${e.locks.bgl}`);
+        if (e.locks.bglb > 0) p.push(`${EMOJI.black} ${e.locks.bglb}`);
         return `${r} **${e.username}** (Lv.${e.level})\n> ${p.join(' | ')}\n> 💰 **${e.totalValue.toLocaleString()} WL**`;
     });
     if (lines.length === 0) lines.push('*Belum ada pemain dengan lock.*');
@@ -780,15 +1119,16 @@ function renderEmbed(ud) {
     switch(ud.currentView) {
         case 'shop': return shopMainEmbed(ud);
         case 'shop_tools': return shopToolsEmbed(ud);
-        case 'shop_blocks': return shopBlocksEmbed(ud);
+        case 'shop_blocks': return shopBlocksEmbed(ud, ud._shopBlocksPage || 'low');
         case 'shop_items': return shopItemsEmbed(ud);
         case 'shop_locks': return shopLocksEmbed(ud);
-        case 'change_block': return changeBlockEmbed(ud);
+        case 'change_block': return changeBlockEmbed(ud, ud._changeBlockPage || 'low');
         case 'skills': return skillsEmbed(ud);
         case 'items': return itemsEmbed(ud);
         case 'tools': return toolsEmbed(ud);
         case 'profile': return profileEmbed(ud);
         case 'event': return eventEmbed(ud);
+        case 'gacha': return gachaEmbed(ud);
         default: return mainEmbed(ud);
     }
 }
@@ -796,15 +1136,16 @@ function renderButtons(ud) {
     switch(ud.currentView) {
         case 'shop': return shopMainButtons();
         case 'shop_tools': return shopToolsButtons();
-        case 'shop_blocks': return shopBlocksButtons();
+        case 'shop_blocks': return shopBlocksButtons(ud, ud._shopBlocksPage || 'low');
         case 'shop_items': return shopItemsButtons();
         case 'shop_locks': return shopLocksButtons();
-        case 'change_block': return changeBlockButtons(ud);
+        case 'change_block': return changeBlockButtons(ud, ud._changeBlockPage || 'low');
         case 'skills': return skillsButtons(ud);
         case 'items': return itemsButtons(ud);
         case 'tools': return toolsButtons(ud);
         case 'profile': return profileButtons();
         case 'event': return eventButtons();
+        case 'gacha': return gachaButtons(ud);
         default: return mainButtons(ud);
     }
 }
@@ -815,14 +1156,16 @@ function renderButtons(ud) {
 function doBreak(ud) {
     const bt = ud.selectedBlock;
     const bd = SHOP_BLOCKS[bt];
+    if (!bd) { ud.selectedBlock = 'dirt'; return { switched: true }; }
+
     const tool = ud.equippedTool ? SHOP_TOOLS[ud.equippedTool] : null;
     const far = tool ? tool.blocksPerBreak : 1;
     const ev = ud.event;
     const unl = isUnlimited(bt);
 
     if (!unl) {
-        if (ud.blocks[bt] <= 0) {
-            const fb = Object.keys(SHOP_BLOCKS).find(k => k !== bt && (isUnlimited(k) || ud.blocks[k] > 0));
+        if ((ud.blocks[bt] || 0) <= 0) {
+            const fb = Object.keys(SHOP_BLOCKS).find(k => k !== bt && (isUnlimited(k) || (ud.blocks[k] || 0) > 0));
             if (fb) {
                 ud.selectedBlock = fb;
                 ud.lastBreak = `⚠️ ${bd.name} habis! Switch ke ${SHOP_BLOCKS[fb].name}.`;
@@ -833,15 +1176,18 @@ function doBreak(ud) {
             return null;
         }
     }
-    const brk = unl ? far : Math.min(far, ud.blocks[bt]);
+    const brk = unl ? far : Math.min(far, ud.blocks[bt] || 0);
     if (!unl) ud.blocks[bt] -= brk;
+
     const tm = tool ? tool.multiplier : 1;
     const gsm = 1 + (ud.skills.gem_hunter * 0.10);
     const gbm = isBuffActive(ud, 'arroz') ? 2 : 1;
+    const pm = getGemMultiplier(ud);
+
     let tg = 0;
     for (let i = 0; i < brk; i++) {
         const bg = Math.floor(Math.random() * (bd.gemsMax - bd.gemsMin + 1)) + bd.gemsMin;
-        let g = Math.floor(bg * tm * gsm * gbm * ev.gemsMult);
+        let g = Math.floor(bg * tm * gsm * gbm * pm * ev.gemsMult);
         if (Math.random() < ud.skills.lucky_find * 0.02) g *= 10;
         tg += g;
     }
@@ -868,13 +1214,13 @@ function formatBreakLog(r, prefix = 'Auto') {
     const bd = SHOP_BLOCKS[r.blockType];
     let m = `${prefix} [${bd.name}]: -${r.blocksBroken}`;
     if (r.returned > 0) m += ` (+${r.returned})`;
-    m += ` → +${r.gemsGained.toLocaleString()} 💰 / +${r.xpGained.toLocaleString()} XP`;
+    m += ` → +${r.gemsGained.toLocaleString()} ${EMOJI.gems} / +${r.xpGained.toLocaleString()} XP`;
     if (r.levelsGained > 0) m += ` 🎉 **LEVEL UP! +${r.levelsGained} SP**`;
     return m;
 }
 
 // ==========================================
-// AFK CHECK SYSTEM
+// AFK CHECK
 // ==========================================
 function stopAfkCheck(userId) {
     const t = afkCheckTimers.get(userId);
@@ -1015,7 +1361,7 @@ function startAutoFarm(userId) {
                     const bd = SHOP_BLOCKS[ud._acc.blockType];
                     let m = `Auto [${bd.name}]: -${ud._acc.blocks}`;
                     if (ud._acc.returned > 0) m += ` (+${ud._acc.returned})`;
-                    m += ` → +${ud._acc.gems.toLocaleString()} 💰 / +${ud._acc.xp.toLocaleString()} XP`;
+                    m += ` → +${ud._acc.gems.toLocaleString()} ${EMOJI.gems} / +${ud._acc.xp.toLocaleString()} XP`;
                     if (ud._acc.levels > 0) m += ` 🎉 **LEVEL UP! +${ud._acc.levels} SP**`;
                     ud.lastBreak = m;
                     ud._acc = null;
@@ -1037,7 +1383,7 @@ function startAutoFarm(userId) {
                 const bd = SHOP_BLOCKS[ud._acc.blockType];
                 let m = `Auto [${bd.name}]: -${ud._acc.blocks}`;
                 if (ud._acc.returned > 0) m += ` (+${ud._acc.returned})`;
-                m += ` → +${ud._acc.gems.toLocaleString()} 💰 / +${ud._acc.xp.toLocaleString()} XP`;
+                m += ` → +${ud._acc.gems.toLocaleString()} ${EMOJI.gems} / +${ud._acc.xp.toLocaleString()} XP`;
                 if (ud._acc.levels > 0) m += ` 🎉 **LEVEL UP! +${ud._acc.levels} SP**`;
                 ud.lastBreak = m;
                 ud._acc = { gems: 0, xp: 0, blocks: 0, returned: 0, levels: 0, blockType: null };
@@ -1109,7 +1455,7 @@ async function realtimeResetPlayer(targetUser) {
                     .setDescription(
                         `**@${username}** telah direset.\n\n` +
                         `> 🏆 Level: **1**\n> 💰 Gems: **500.000**\n` +
-                        `> 🟫 Dirt: **∞**\n> 🥔 POG: **0**\n> 🔒 WL: **1**`
+                        `> ${EMOJI.dirt} Dirt: **∞**\n> ${EMOJI.pog} POG: **0**\n> ${EMOJI.wl} WL: **1**`
                     ).setTimestamp()],
                 components: [new ActionRowBuilder().addComponents(
                     new ButtonBuilder().setCustomId('nav_main').setLabel('🔄 Mulai Ulang').setStyle(ButtonStyle.Success)
@@ -1233,7 +1579,7 @@ client.once('ready', async () => {
 // ==========================================
 // EVENT LISTENERS
 // ==========================================
-client.on('guildCreate', g => console.log(`➕ Join: ${g.name} (${g.id})`));
+client.on('guildCreate', g => console.log(`➕ Join: g.name({g.id})`));
 
 client.on('guildMemberAdd', async m => {
     try { await handleMemberJoin(m); } catch (e) {}
@@ -1266,6 +1612,85 @@ client.on('channelDelete', async (channel) => {
 });
 
 // ==========================================
+// GACHA HELPER — Roll 1x
+// ==========================================
+function rollGacha(ud) {
+    const totalChance = GACHA_CONFIG.prizes.reduce((sum, p) => sum + p.chance, 0);
+    let roll = Math.random() * totalChance;
+    let selected = GACHA_CONFIG.prizes[0];
+
+    for (const p of GACHA_CONFIG.prizes) {
+        roll -= p.chance;
+        if (roll <= 0) { selected = p; break; }
+    }
+
+    // ===== HANDLE PRIZE =====
+    const result = { label: selected.label, type: selected.type, success: true, extra: '' };
+
+    if (selected.type === 'gems') {
+        ud.gems += selected.amount;
+        result.extra = `+${selected.amount.toLocaleString()} ${EMOJI.gems}`;
+    }
+    else if (selected.type === 'xp') {
+        const beforeLvl = ud.level;
+        ud.xp += selected.amount;
+        const lvUp = checkLevelUp(ud);
+        result.extra = `+${selected.amount.toLocaleString()} XP`;
+        if (lvUp > 0) result.extra += ` · 🎉 Level ${beforeLvl} → ${ud.level}`;
+    }
+    else if (selected.type === 'gbc') {
+        ud.items.gbc = (ud.items.gbc || 0) + selected.amount;
+        result.extra = `+${selected.amount} ${EMOJI.gbc}`;
+    }
+    else if (selected.type === 'bomb') {
+        ud.items.bomb = (ud.items.bomb || 0) + selected.amount;
+        result.extra = `+${selected.amount} 💣`;
+    }
+    else if (selected.type === 'arroz') {
+        ud.items.arroz = (ud.items.arroz || 0) + selected.amount;
+        result.extra = `+${selected.amount} 🍗`;
+    }
+    else if (selected.type === 'clover') {
+        ud.items.clover = (ud.items.clover || 0) + selected.amount;
+        result.extra = `+${selected.amount} 🍀`;
+    }
+    else if (selected.type === 'gempack') {
+        ud.items.gempack = (ud.items.gempack || 0) + selected.amount;
+        result.extra = `+${selected.amount} 💎`;
+    }
+    else if (selected.type === 'xpscroll') {
+        ud.items.xpscroll = (ud.items.xpscroll || 0) + selected.amount;
+        result.extra = `+${selected.amount} 📜`;
+    }
+    else if (selected.type === 'timewarp') {
+        ud.items.timewarp = (ud.items.timewarp || 0) + selected.amount;
+        result.extra = `+${selected.amount} ⏳`;
+    }
+    else if (selected.type === 'ancesred') {
+        ud.items.ancesRedLevel = (ud.items.ancesRedLevel || 0) + selected.amount;
+        if (ud.items.ancesRedLevel > ANCES_RED.maxLevel) ud.items.ancesRedLevel = ANCES_RED.maxLevel;
+        result.extra = `ANCESRED.emoji→Lv.{ud.items.ancesRedLevel}`;
+    }
+    else if (selected.type === 'gang') {
+        // Cek global supply
+        const currentOwned = db.getGlobalStat('gang_owned');
+        if (currentOwned >= GACHA_CONFIG.gangGlobalSupply) {
+            result.success = false;
+            result.extra = '❌ Gang sudah habis! Dapat 500.000 gems sebagai gantinya.';
+            ud.gems += 500000;
+        } else {
+            ud.items.gang = (ud.items.gang || 0) + selected.amount;
+            if (ud.items.gang > GANG.maxCount) ud.items.gang = GANG.maxCount;
+            db.incrementGlobalStat('gang_owned', selected.amount);
+            result.extra = `GANG.emojix{ud.items.gang}/${GANG.maxCount}`;
+        }
+    }
+
+    ud.totalGachaRolls = (ud.totalGachaRolls || 0) + 1;
+    return result;
+}
+
+// ==========================================
 // INTERACTION HANDLER
 // ==========================================
 client.on('interactionCreate', async interaction => {
@@ -1285,7 +1710,6 @@ client.on('interactionCreate', async interaction => {
         if (interaction.isChatInputCommand()) {
             const userId = interaction.user.id;
 
-            // ===== /afkcheck =====
             if (interaction.commandName === 'afkcheck') {
                 if (!interaction.guild) return interaction.reply({ content: '❌ Hanya di server.', ephemeral: true });
                 await interaction.deferReply({ ephemeral: true });
@@ -1330,7 +1754,6 @@ client.on('interactionCreate', async interaction => {
                 return;
             }
 
-            // ===== /setup =====
             if (interaction.commandName === 'setup') {
                 if (!interaction.guild) return interaction.reply({ content: '❌ Hanya di server.', ephemeral: true });
                 await interaction.deferReply({ ephemeral: true });
@@ -1341,7 +1764,6 @@ client.on('interactionCreate', async interaction => {
                 return interaction.editReply({ content: `✅ Setup selesai!\n> Panel: ${p}\n> Leaderboard: ${l}` });
             }
 
-            // ===== /unsetup =====
             if (interaction.commandName === 'unsetup') {
                 if (!interaction.guild) return interaction.reply({ content: '❌ Hanya di server.', ephemeral: true });
                 db.removeGuildConfig(interaction.guildId);
@@ -1350,7 +1772,6 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: `✅ Config dihapus.`, ephemeral: true });
             }
 
-            // ===== /resetplayer =====
             if (interaction.commandName === 'resetplayer') {
                 await interaction.deferReply({ ephemeral: true });
                 const tu = interaction.options.getUser('player');
@@ -1366,7 +1787,6 @@ client.on('interactionCreate', async interaction => {
                 return interaction.editReply({ content: `✅ **Reset (REALTIME)!**\n\n> 👤 Player: **${tu.username}**` });
             }
 
-            // ===== /farming =====
             if (interaction.commandName === 'farming') {
                 await interaction.deferReply();
                 const ud = loadUser(userId, interaction.user.username);
@@ -1395,14 +1815,12 @@ client.on('interactionCreate', async interaction => {
                 activeMessages.set(userId, msg);
             }
 
-            // ===== /event =====
             else if (interaction.commandName === 'event') {
                 const ud = loadUser(userId, interaction.user.username);
                 userCache.set(userId, ud);
                 await interaction.reply({ embeds: [eventEmbed(ud)], ephemeral: true });
             }
 
-            // ===== /customevent =====
             else if (interaction.commandName === 'customevent') {
                 await interaction.deferReply({ ephemeral: true });
                 try {
@@ -1418,11 +1836,11 @@ client.on('interactionCreate', async interaction => {
                     const bm = interaction.options.getInteger('blocks');
                     ud.event.gemsMult = gm;
                     ud.event.blocksMult = bm;
-                    ud.event.name = `Custom Event (Gems x${gm}, Blocks x${bm})`;
+                    ud.event.name = `Custom Event (Gems xgm,Blocksx{bm})`;
                     db.saveUser(ud);
                     const msg = activeMessages.get(userId);
                     if (msg) { try { await msg.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) }); } catch {} }
-                    return interaction.editReply({ content: `✅ Event: Gems x${gm} | Blocks x${bm}` });
+                    return interaction.editReply({ content: `✅ Event: Gems xgm|Blocksx{bm}` });
                 } catch (e) {
                     return interaction.editReply({ content: `❌ Gagal: ${e.message}` }).catch(() => {});
                 }
@@ -1436,7 +1854,6 @@ client.on('interactionCreate', async interaction => {
         if (interaction.isStringSelectMenu()) {
             const userId = interaction.user.id;
 
-            // ===== TOOL SELECT =====
             if (interaction.customId === 'select_tool') {
                 let ud = userCache.get(userId);
                 if (!ud) { ud = loadUser(userId, interaction.user.username); userCache.set(userId, ud); }
@@ -1467,7 +1884,6 @@ client.on('interactionCreate', async interaction => {
                 return;
             }
 
-            // ===== MAIN MENU SELECT =====
             if (interaction.customId === 'main_menu_select') {
                 let ud = userCache.get(userId);
                 if (!ud) { ud = loadUser(userId, interaction.user.username); userCache.set(userId, ud); }
@@ -1483,6 +1899,7 @@ client.on('interactionCreate', async interaction => {
                 const viewMap = {
                     'menu_shop': 'shop',
                     'menu_items': 'items',
+                    'menu_gacha': 'gacha',
                     'menu_profile': 'profile',
                     'menu_skills': 'skills',
                     'menu_tools': 'tools'
@@ -1490,6 +1907,9 @@ client.on('interactionCreate', async interaction => {
 
                 if (viewMap[v]) {
                     ud.currentView = viewMap[v];
+                    // Reset page ke default
+                    if (viewMap[v] === 'shop') ud._shopBlocksPage = 'low';
+                    if (viewMap[v] === 'change_block') ud._changeBlockPage = 'low';
                 }
 
                 await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
@@ -1505,6 +1925,12 @@ client.on('interactionCreate', async interaction => {
         // ==========================================
         if (interaction.isModalSubmit()) {
             const userId = interaction.user.id;
+
+            // ===== ANTI-DUPE LOCK =====
+            if (!lockUser(userId, 2000)) {
+                return interaction.reply({ content: '⏳ Tunggu sebentar...', ephemeral: true }).catch(() => {});
+            }
+
             const ud = loadUser(userId, interaction.user.username);
             userCache.set(userId, ud);
 
@@ -1532,8 +1958,8 @@ client.on('interactionCreate', async interaction => {
                 const tc = b.price * qty;
                 if (ud.gems < tc) return interaction.reply({ content: `❌ Gems kurang! Butuh ${tc.toLocaleString()}`, ephemeral: true });
                 ud.gems -= tc;
-                ud.blocks[k] += qty;
-                resp = `✅ Beli **${b.name} x${qty.toLocaleString()}** (-${tc.toLocaleString()})`;
+                ud.blocks[k] = (ud.blocks[k] || 0) + qty;
+                resp = `✅ Beli **b.namex{qty.toLocaleString()}** (-${tc.toLocaleString()})`;
             }
             else if (interaction.customId.startsWith('modal_buylock_')) {
                 const k = interaction.customId.replace('modal_buylock_', '');
@@ -1544,7 +1970,7 @@ client.on('interactionCreate', async interaction => {
                 ud.gems -= tc;
                 ud.locks[k] += qty;
                 db.saveUser(ud);
-                resp = `✅ Beli **${l.name} x${qty.toLocaleString()}**\n> WL ${ud.locks.wl} | DL ${ud.locks.dl} | BGL ${ud.locks.bgl} | BGLB ${ud.locks.bglb}`;
+                resp = `✅ Beli **l.namex{qty.toLocaleString()}**\n> WL ${ud.locks.wl} | DL ${ud.locks.dl} | BGL ${ud.locks.bgl} | BGLB ${ud.locks.bglb}`;
             }
 
             db.saveUser(ud);
@@ -1600,7 +2026,7 @@ client.on('interactionCreate', async interaction => {
             ud.autoFarm = false;
             ud.lastBreak = 'Auto Farm dimatikan (interaksi lain).';
             db.saveUser(ud);
-            console.log(`⏹️ Auto Farm OFF via "${id}" (${interaction.user.username})`);
+            console.log(`⏹️ Auto Farm OFF via "id"({interaction.user.username})`);
         }
 
         let eph = null, err = false;
@@ -1612,14 +2038,13 @@ client.on('interactionCreate', async interaction => {
             const cfg = db.getGuildConfig(interaction.guildId);
             if (!cfg) return interaction.editReply({ content: '❌ Server belum di-setup. Jalankan `/setup`.' });
 
-            let thread = null, src = null;
+            let thread = null;
             const dbt = db.getUserThread(interaction.guildId, userId);
             if (dbt) {
                 try {
                     thread = await interaction.guild.channels.fetch(dbt.threadId);
                     if (thread && thread.parentId === interaction.channelId) {
                         if (thread.archived) try { await thread.setArchived(false); } catch {}
-                        src = 'database';
                         userThreads.set(userId, thread.id);
                     } else {
                         thread = null;
@@ -1640,7 +2065,6 @@ client.on('interactionCreate', async interaction => {
                         thread = await interaction.guild.channels.fetch(cid);
                         if (thread && thread.parentId === interaction.channelId) {
                             if (thread.archived) try { await thread.setArchived(false); } catch {}
-                            src = 'cache';
                             db.setUserThread(interaction.guildId, userId, thread.id, interaction.channelId);
                         } else {
                             thread = null;
@@ -1705,6 +2129,166 @@ client.on('interactionCreate', async interaction => {
             return interaction.editReply({ content: `✅ Thread dibuat: ${thread}` });
         }
 
+        // ===== GACHA ROLL =====
+        if (id === 'gacha_roll_1' || id === 'gacha_roll_10') {
+            if (!lockUser(userId, 2000)) {
+                return interaction.reply({ content: '⏳ Tunggu sebentar...', ephemeral: true }).catch(() => {});
+            }
+
+            const rolls = id === 'gacha_roll_1' ? 1 : 10;
+            const gbcOwned = ud.items.gbc || 0;
+
+            if (gbcOwned < rolls) {
+                return interaction.reply({ content: `❌ GBC kurang! Butuh **${rolls}** EMOJI.gbc,kamupunya**{gbcOwned}**`, ephemeral: true });
+            }
+
+            // Kurangi GBC dulu (atomic)
+            ud.items.gbc -= rolls;
+
+            const results = [];
+            for (let i = 0; i < rolls; i++) {
+                const r = rollGacha(ud);
+                results.push(r);
+            }
+
+            db.saveUser(ud);
+
+            // Build result embed
+            const lines = results.map((r, i) => {
+                const mark = r.type === 'gang' ? '🎉 ' : (r.type === 'ancesred' ? '🔴 ' : '');
+                return `**${i + 1}.** mark{r.label}\n> ${r.extra}`;
+            });
+
+            const embed = new EmbedBuilder()
+                .setColor(rolls === 10 ? '#F1C40F' : '#9B59B6')
+                .setTitle(rolls === 10 ? '🎰 Gacha 10x Roll!' : '🎰 Gacha Roll!')
+                .setDescription(lines.join('\n\n'))
+                .addFields({
+                    name: '📊 Ringkasan',
+                    value:
+                        `${EMOJI.gbc} **GBC tersisa:** ${ud.items.gbc}\n` +
+                        `🎯 **Total roll:** ${ud.totalGachaRolls}\n` +
+                        `${GANG.emoji} **Gang kamu:** ud.items.gang||0/{GANG.maxCount}`
+                })
+                .setFooter({ text: `Roll dari ${interaction.user.username}` })
+                .setTimestamp();
+
+            try {
+                await interaction.update({ embeds: [embed], components: renderButtons(ud) });
+                activeMessages.set(userId, interaction.message);
+            } catch {}
+
+            // Update panel lagi setelah 3 detik (balik ke gacha view)
+            setTimeout(async () => {
+                try {
+                    ud.currentView = 'gacha';
+                    const m = activeMessages.get(userId);
+                    if (m) await m.edit({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+                } catch {}
+            }, 5000);
+
+            refreshAllLeaderboards();
+            return;
+        }
+
+        // ===== UPGRADE ANCES RED =====
+        if (id === 'upgrade_ancesred') {
+            if (!lockUser(userId, 2000)) {
+                return interaction.reply({ content: '⏳ Tunggu sebentar...', ephemeral: true }).catch(() => {});
+            }
+
+            const currentLevel = ud.items.ancesRedLevel || 0;
+            if (currentLevel >= ANCES_RED.maxLevel) {
+                return interaction.reply({ content: `❌ Ances Red sudah MAX!`, ephemeral: true });
+            }
+
+            const cost = ANCES_RED.costs[currentLevel];
+            let canAfford = true;
+            let missing = '';
+
+            if (cost.gems > 0 && ud.gems < cost.gems) {
+                canAfford = false;
+                missing = `Butuh **${cost.gems.toLocaleString()}** ${EMOJI.gems}`;
+            }
+            if (cost.bgl > 0 && ud.locks.bgl < cost.bgl) {
+                canAfford = false;
+                missing = `Butuh **${cost.bgl}** ${EMOJI.bgl}`;
+            }
+
+            if (!canAfford) {
+                return interaction.reply({ content: `❌ Tidak cukup! ${missing}`, ephemeral: true });
+            }
+
+            // Charge
+            if (cost.gems > 0) ud.gems -= cost.gems;
+            if (cost.bgl > 0) ud.locks.bgl -= cost.bgl;
+
+            ud.items.ancesRedLevel = currentLevel + 1;
+            db.saveUser(ud);
+
+            const newBonus = ANCES_RED.bonuses[ud.items.ancesRedLevel];
+            const totalBoost = getGemMultiplier(ud);
+            const boostPercent = Math.round((totalBoost - 1) * 100);
+
+            await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+            activeMessages.set(userId, interaction.message);
+
+            return interaction.followUp({
+                content:
+                    `✅ ${ANCES_RED.emoji} **Ances Red** upgraded!\n` +
+                    `> Lv.**currentLevel**→Lv.**{ud.items.ancesRedLevel}**\n` +
+                    `> Bonus sekarang: **+${newBonus}%** Gems\n` +
+                    `> Total Boost: **+${boostPercent}%** Gems`,
+                ephemeral: true
+            });
+        }
+
+        // ===== SHOP BLOCKS PAGE NAV =====
+        if (id === 'shop_blocks_page_low') {
+            ud._shopBlocksPage = 'low';
+            ud.currentView = 'shop_blocks';
+            await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+            activeMessages.set(userId, interaction.message);
+            return;
+        }
+        if (id === 'shop_blocks_page_pog') {
+            ud._shopBlocksPage = 'pog';
+            ud.currentView = 'shop_blocks';
+            await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+            activeMessages.set(userId, interaction.message);
+            return;
+        }
+        if (id === 'shop_blocks_page_high') {
+            ud._shopBlocksPage = 'high';
+            ud.currentView = 'shop_blocks';
+            await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+            activeMessages.set(userId, interaction.message);
+            return;
+        }
+
+        // ===== CHANGE BLOCK PAGE NAV =====
+        if (id === 'change_block_page_low') {
+            ud._changeBlockPage = 'low';
+            ud.currentView = 'change_block';
+            await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+            activeMessages.set(userId, interaction.message);
+            return;
+        }
+        if (id === 'change_block_page_pog') {
+            ud._changeBlockPage = 'pog';
+            ud.currentView = 'change_block';
+            await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+            activeMessages.set(userId, interaction.message);
+            return;
+        }
+        if (id === 'change_block_page_high') {
+            ud._changeBlockPage = 'high';
+            ud.currentView = 'change_block';
+            await interaction.update({ embeds: [renderEmbed(ud)], components: renderButtons(ud) });
+            activeMessages.set(userId, interaction.message);
+            return;
+        }
+
         // ===== CUSTOM BUY =====
         if (id.startsWith('customblock_')) {
             const k = id.replace('customblock_', '');
@@ -1721,18 +2305,44 @@ client.on('interactionCreate', async interaction => {
         }
 
         // ===== NAVIGASI =====
-        if (id === 'nav_main') ud.currentView = 'main';
-        else if (id === 'nav_shop') ud.currentView = 'shop';
-        else if (id === 'nav_shop_tools') ud.currentView = 'shop_tools';
-        else if (id === 'nav_shop_blocks') ud.currentView = 'shop_blocks';
-        else if (id === 'nav_shop_items') ud.currentView = 'shop_items';
-        else if (id === 'nav_shop_locks') ud.currentView = 'shop_locks';
-        else if (id === 'nav_change_block') ud.currentView = 'change_block';
-        else if (id === 'nav_skills') ud.currentView = 'skills';
-        else if (id === 'nav_items') ud.currentView = 'items';
-        else if (id === 'nav_tools') ud.currentView = 'tools';
-        else if (id === 'nav_profile') ud.currentView = 'profile';
-        else if (id === 'nav_event') ud.currentView = 'event';
+        if (id === 'nav_main') {
+            ud.currentView = 'main';
+        }
+        else if (id === 'nav_shop') {
+            ud.currentView = 'shop';
+        }
+        else if (id === 'nav_shop_tools') {
+            ud.currentView = 'shop_tools';
+        }
+        else if (id === 'nav_shop_blocks') {
+            ud.currentView = 'shop_blocks';
+            if (!ud._shopBlocksPage) ud._shopBlocksPage = 'low';
+        }
+        else if (id === 'nav_shop_items') {
+            ud.currentView = 'shop_items';
+        }
+        else if (id === 'nav_shop_locks') {
+            ud.currentView = 'shop_locks';
+        }
+        else if (id === 'nav_change_block') {
+            ud.currentView = 'change_block';
+            if (!ud._changeBlockPage) ud._changeBlockPage = 'low';
+        }
+        else if (id === 'nav_skills') {
+            ud.currentView = 'skills';
+        }
+        else if (id === 'nav_items') {
+            ud.currentView = 'items';
+        }
+        else if (id === 'nav_tools') {
+            ud.currentView = 'tools';
+        }
+        else if (id === 'nav_profile') {
+            ud.currentView = 'profile';
+        }
+        else if (id === 'nav_event') {
+            ud.currentView = 'event';
+        }
 
         // ===== TOGGLE AUTO FARM =====
         else if (id === 'btn_toggle_auto') {
@@ -1772,6 +2382,7 @@ client.on('interactionCreate', async interaction => {
 
         // ===== BELI TOOL =====
         else if (id.startsWith('buy_') && SHOP_TOOLS[id.slice(4)]) {
+            if (!lockUser(userId, 1000)) return;
             const k = id.slice(4);
             const t = SHOP_TOOLS[k];
             if (ud.gems < t.price) { eph = `❌ Gems kurang! Butuh ${t.price.toLocaleString()}`; err = true; }
@@ -1783,12 +2394,13 @@ client.on('interactionCreate', async interaction => {
         else if (id.startsWith('selectblock_')) {
             const k = id.slice(12);
             if (!SHOP_BLOCKS[k]) { eph = '❌ Block invalid.'; err = true; }
-            else if (!isUnlimited(k) && ud.blocks[k] <= 0) { eph = `❌ Tidak punya **${SHOP_BLOCKS[k].name}**!`; err = true; }
+            else if (!isUnlimited(k) && (ud.blocks[k] || 0) <= 0) { eph = `❌ Tidak punya **${SHOP_BLOCKS[k].name}**!`; err = true; }
             else { ud.selectedBlock = k; db.saveUser(ud); eph = `✅ Pakai **${SHOP_BLOCKS[k].name}**!`; }
         }
 
-        // ===== BELI ITEM (SEMUA ITEM) =====
+        // ===== BELI ITEM =====
         else if (id.startsWith('buy_') && SHOP_ITEMS[id.slice(4)]) {
+            if (!lockUser(userId, 1000)) return;
             const k = id.slice(4);
             const i = SHOP_ITEMS[k];
             if (ud.gems < i.price) { eph = `❌ Gems kurang! Butuh ${i.price.toLocaleString()}`; err = true; }
@@ -1797,21 +2409,21 @@ client.on('interactionCreate', async interaction => {
                 if (!ud.items[k]) ud.items[k] = 0;
                 ud.items[k]++;
                 db.saveUser(ud);
-                eph = `✅ Beli ${i.emoji} **${i.name}** ×1!`;
+                eph = `✅ Beli i.emoji**{i.name}** ×1!`;
             }
         }
 
         // ===== PAKAI ITEM =====
         else if (id.startsWith('use_')) {
+            if (!lockUser(userId, 1000)) return;
             const k = id.slice(4);
             const item = SHOP_ITEMS[k];
 
             if (!item) { eph = '❌ Item invalid.'; err = true; }
-            else if (!ud.items[k] || ud.items[k] <= 0) { eph = `❌ Tidak punya ${item.emoji} **${item.name}**!`; err = true; }
+            else if (!ud.items[k] || ud.items[k] <= 0) { eph = `❌ Tidak punya item.emoji**{item.name}**!`; err = true; }
             else {
                 ud.items[k]--;
 
-                // ===== BUFF ITEMS =====
                 if (k === 'arroz') {
                     ud.activeBuffs.arroz = Date.now() + (item.duration * 1000);
                     eph = `✅ 🍗 **Arroz Con Pollo** aktif! x2 Gems selama ${item.duration}s`;
@@ -1824,7 +2436,6 @@ client.on('interactionCreate', async interaction => {
                     ud.activeBuffs.timewarp = Date.now() + (item.duration * 1000);
                     eph = `✅ ⏳ **Time Warp** aktif! Auto Farm 2x lebih cepat selama ${item.duration}s\n> ⚡ Interval sekarang: **${(getAutoInterval(ud) / 1000).toFixed(1)}s**`;
                 }
-                // ===== INSTANT ITEMS =====
                 else if (k === 'gempack') {
                     ud.gems += item.amount;
                     eph = `✅ 💎 **Gem Pack** dibuka! **+${item.amount.toLocaleString()} Gems**`;
@@ -1834,14 +2445,13 @@ client.on('interactionCreate', async interaction => {
                     ud.xp += item.amount;
                     const lvUp = checkLevelUp(ud);
                     eph = `✅ 📜 **XP Scroll** dibuka! **+${item.amount.toLocaleString()} XP**`;
-                    if (lvUp > 0) eph += `\n> 🎉 **LEVEL UP! ${beforeLvl} → ${ud.level}** (+${lvUp} SP)`;
+                    if (lvUp > 0) eph += `\n> 🎉 **LEVEL UP! ${beforeLvl} → ud.level**(+{lvUp} SP)`;
                 }
                 else if (k === 'bomb') {
-                    ud.blocks.pog += item.amount;
+                    ud.blocks.pog = (ud.blocks.pog || 0) + item.amount;
                     eph = `✅ 💣 **Block Bomb** meledak! **+${item.amount} Pot O' Gems** ke inventory`;
                 }
 
-                // Item instant mengembalikan view ke main (biar user lihat efek)
                 if (item.category === 'instant') {
                     ud.currentView = 'main';
                 }
@@ -1863,18 +2473,20 @@ client.on('interactionCreate', async interaction => {
         }
 
         // ===== UPGRADE SKILL =====
-        else if (id.startsWith('up_')) {
+        else if (id.startsWith('up_') && id !== 'upgrade_ancesred') {
+            if (!lockUser(userId, 1000)) return;
             const k = id.slice(3);
             const s = SKILLS[k];
+            if (!s) return;
             const lvl = ud.skills[k];
             const cost = getSkillUpgradeCost(lvl);
             if (lvl >= s.maxLevel) { eph = `⚠️ **${s.name}** sudah MAX!`; err = true; }
-            else if (ud.skillPoints < cost) { eph = `❌ SP kurang! Butuh **${cost}**, punya **${ud.skillPoints}**.`; err = true; }
+            else if (ud.skillPoints < cost) { eph = `❌ SP kurang! Butuh **cost**,punya**{ud.skillPoints}**.`; err = true; }
             else {
                 ud.skillPoints -= cost;
                 ud.skills[k]++;
                 db.saveUser(ud);
-                eph = `✅ ${s.emoji} **${s.name}** → Lv.**${ud.skills[k]}/${s.maxLevel}** (-${cost} SP)`;
+                eph = `✅ s.emoji**{s.name}** → Lv.**ud.skills[k]/{s.maxLevel}** (-${cost} SP)`;
                 if (k === 'mining_speed') {
                     eph += `\n> ⏱️ Interval: **${(getAutoInterval(ud) / 1000).toFixed(1)}s**`;
                 }
