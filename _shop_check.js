@@ -6,7 +6,6 @@ const src = fs.readFileSync('index.js', 'utf8').split('\n');
 const slice = (a, b) => src.slice(a - 1, b).join('\n');
 
 const code = [
-  "const TIMEWARP_DURATION = 60;",
   slice(45, 256),   // EMOJI + SHOP_TOOLS + BLOCKS + SHOP_ITEMS + SHOP_LOCKS + SKILLS
   slice(326, 479),  // helpers (getTotalBlocks, getTotalLockValue, formatWL, formatStock, formatBlockPrice)
   slice(785, 1027), // shop embeds + shop buttons
