@@ -437,6 +437,33 @@ function formatWL(v) {
     return v.toFixed(2);
 }
 
+// ==========================================
+// 🔒 LOCK DISPLAY HELPERS
+// ==========================================
+const LOCK_INFO = {
+    wl:   { name: 'WL',   emoji: EMOJI.wl,    worth: 1 },
+    dl:   { name: 'DL',   emoji: EMOJI.dl,    worth: 100 },
+    bgl:  { name: 'BGL',  emoji: EMOJI.bgl,   worth: 10000 },
+    bglb: { name: 'BGLB', emoji: EMOJI.black, worth: 1000000 }
+};
+// Ringkasan 1 baris: "🔓 1 · 🔸 0 · 🔶 43 · ⬛ 38"
+function lockSummary(ud) {
+    return Object.keys(LOCK_INFO)
+        .map(k => `${LOCK_INFO[k].emoji} ${formatWL(ud.locks[k] || 0)}`)
+        .join(' · ');
+}
+// Rincian + penjelasan aturan konversi
+function lockDetail(ud) {
+    const lines = Object.entries(LOCK_INFO).map(([k, i]) => {
+        const amount = ud.locks[k] || 0;
+        return `${i.emoji} **${i.name}** ×${formatWL(amount)}  ·  💎 = **${formatWL(amount * i.worth)} WL**`;
+    });
+    return lines.join('\n') +
+        `\n\n> 🔄 **Auto-convert:** 100 ${EMOJI.wl} → 1 ${EMOJI.dl} → 1 ${EMOJI.bgl} → 1 ${EMOJI.black}` +
+        `\n> 🛒 Saat belanja, lock otomatis terpakai dari yang **paling besar** dulu.` +
+        `\n> 💎 **Total: ${formatWL(getTotalLockValue(ud))} WL**`;
+}
+
 function formatStock(k, a) {
     return isUnlimited(k) ? '**∞ (Unlimited)**' : `**${a.toLocaleString()}**`;
 }
