@@ -7,6 +7,27 @@ const {
 const db = require('./database');
 
 // ==========================================
+// CUSTOM EMOJI (sama seperti di index.js)
+// ==========================================
+const EMOJI = {
+    lray:     '<:lray:1552901313992335390>',
+    ancesred: '<:ancesred:1552900692895600640>',
+    bgl:      '<:bgl:1552900717780406303>',
+    black:    '<:black:1552900737221263500>',
+    dirt:     '<:dirt:1552900796763602985>',
+    dl:       '<:dl:1552900827130372168>',
+    fist:     '<:fist:1552900846725898282>',
+    gang:     '<:gang:1552900891651215430>',
+    gbc:      '<:gbc:1552901254177497179>',
+    gems:     '<:gems:1552901284443455528>',
+    pog:      '<:pog:1552901365704032256>',
+    mray:     '<:mray:1552901340005670932>',
+    rayman:   '<:rayman:1552901389120704623>',
+    wl:       '<:wl:1552901434834550824>',
+    gray:     '<:gray:1552905480815378552>'
+};
+
+// ==========================================
 // SLASH COMMANDS
 // ==========================================
 const TRADE_COMMANDS = [
@@ -18,21 +39,21 @@ const TRADE_COMMANDS = [
 ];
 
 // ==========================================
-// DAFTAR ITEM YANG BISA DI-TRADE
+// DAFTAR ITEM YANG BISA DI-TRADE (pakai custom emoji)
 // ==========================================
 const TRADE_ITEMS = [
-    { key: 'gems',     name: 'Gems',       emoji: '💰' },
-    { key: 'wl',       name: 'WL',         emoji: '🔹' },
-    { key: 'dl',       name: 'DL',         emoji: '🔸' },
-    { key: 'bgl',      name: 'BGL',        emoji: '🔶' },
-    { key: 'bglb',     name: 'BGLB',       emoji: '⬛' },
+    { key: 'gems',     name: 'Gems',       emoji: EMOJI.gems },
+    { key: 'wl',       name: 'WL',         emoji: EMOJI.wl },
+    { key: 'dl',       name: 'DL',         emoji: EMOJI.dl },
+    { key: 'bgl',      name: 'BGL',        emoji: EMOJI.bgl },
+    { key: 'bglb',     name: 'BGLB',       emoji: EMOJI.black },
     { key: 'arroz',    name: 'Arroz',      emoji: '🍗' },
     { key: 'clover',   name: 'Clover',     emoji: '🍀' },
     { key: 'gempack',  name: 'Gem Pack',   emoji: '💎' },
     { key: 'xpscroll', name: 'XP Scroll',  emoji: '📜' },
     { key: 'bomb',     name: 'Block Bomb', emoji: '💣' },
     { key: 'timewarp', name: 'Time Warp',  emoji: '⏳' },
-    { key: 'gbc',      name: 'GBC',        emoji: '🎰' }
+    { key: 'gbc',      name: 'GBC',        emoji: EMOJI.gbc }
 ];
 
 // ==========================================
@@ -42,7 +63,7 @@ const activeTrades = new Map();
 const TRADE_EXPIRE_MS = 10 * 60 * 1000;
 
 // ==========================================
-// HELPERS
+// HELPER
 // ==========================================
 function emptyOffer() {
     const o = {};
@@ -239,7 +260,6 @@ async function handleTradeCommand(interaction) {
 async function handleTradeButton(interaction) {
     const userId = interaction.user.id;
 
-    // Cancel
     if (interaction.customId === 'trade_cancel') {
         const trade = findTradeByUser(userId);
         if (!trade) return interaction.reply({ content: '❌ Tidak ada trade aktif.', ephemeral: true });
@@ -342,8 +362,6 @@ async function handleTradeButton(interaction) {
     // ===== CONFIRM =====
     if (action === 'confirm') {
         const isUser1 = trade.user1Id === userId;
-
-        // Cek offer tidak kosong
         const myOffer = isUser1 ? trade.offer1 : trade.offer2;
         if (isOfferEmpty(myOffer)) {
             return interaction.reply({ content: '❌ Offer kamu masih kosong. Tambah item dulu.', ephemeral: true });
@@ -457,7 +475,7 @@ async function handleTradeModal(interaction) {
 
     if (amount > remaining) {
         return interaction.reply({ 
-            content: `❌ Kamu hanya punya **${remaining.toLocaleString()}** ${itemInfo.name} tersisa.`, 
+            content: `❌ Kamu hanya punya **${remaining.toLocaleString()}** ${itemInfo.emoji} ${itemInfo.name} tersisa.`, 
             ephemeral: true 
         });
     }
@@ -476,7 +494,7 @@ async function handleTradeModal(interaction) {
     } catch {}
 
     return interaction.reply({
-        content: `✅ **+${amount.toLocaleString()} ${itemInfo.name}** ditambahkan ke offer kamu.`,
+        content: `✅ **+${amount.toLocaleString()} ${itemInfo.emoji} ${itemInfo.name}** ditambahkan ke offer kamu.`,
         ephemeral: true
     });
 }
@@ -494,7 +512,7 @@ async function executeTrade(interaction, trade) {
         if (getOwned(ud1, k) < trade.offer1[k]) {
             activeTrades.delete(trade.sessionKey);
             return interaction.update({
-                content: `❌ Trade gagal! <@${trade.user1Id}> tidak punya cukup ${TRADE_ITEMS.find(i => i.key === k)?.name || k}.`,
+                content: `❌ Trade gagal! <@${trade.user1Id}> tidak punya cukup item.`,
                 embeds: [buildTradeEmbed(trade, 'cancelled')],
                 components: buildTradeButtons(trade, true)
             });
@@ -505,7 +523,7 @@ async function executeTrade(interaction, trade) {
         if (getOwned(ud2, k) < trade.offer2[k]) {
             activeTrades.delete(trade.sessionKey);
             return interaction.update({
-                content: `❌ Trade gagal! <@${trade.user2Id}> tidak punya cukup ${TRADE_ITEMS.find(i => i.key === k)?.name || k}.`,
+                content: `❌ Trade gagal! <@${trade.user2Id}> tidak punya cukup item.`,
                 embeds: [buildTradeEmbed(trade, 'cancelled')],
                 components: buildTradeButtons(trade, true)
             });
@@ -520,6 +538,15 @@ async function executeTrade(interaction, trade) {
 
     db.saveUser(ud1);
     db.saveUser(ud2);
+
+    // Quest: trade
+    try {
+        const questMod = require('./dailyquest');
+        questMod.trackQuest(ud1, 'trade', 1);
+        questMod.trackQuest(ud2, 'trade', 1);
+        db.saveUser(ud1);
+        db.saveUser(ud2);
+    } catch (e) {}
 
     activeTrades.delete(trade.sessionKey);
 
