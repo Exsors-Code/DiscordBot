@@ -19,195 +19,200 @@ const QUEST_COMMANDS = [
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addSubcommand(s => s
             .setName('give')
-            .setDescription('Give quest reward manual ke user')
-            .addUserOption(o => o.setName('user').setDescription('Target user').setRequired(true))
+            .setDescription('Give reward manual ke user')
+            .addUserOption(o => o.setName('user').setDescription('Target').setRequired(true))
             .addIntegerOption(o => o.setName('gems').setDescription('Jumlah gems').setRequired(false).setMinValue(0))
             .addIntegerOption(o => o.setName('wl').setDescription('Jumlah WL').setRequired(false).setMinValue(0))
         )
-        .addSubcommand(s => s.setName('resetall').setDescription('Reset semua quest semua user'))
-        .addSubcommand(s => s.setName('status').setDescription('Lihat statistik quest server'))
+        .addSubcommand(s => s
+            .setName('reroll')
+            .setDescription('Reroll quest user (biar random lagi)')
+            .addUserOption(o => o.setName('user').setDescription('Target').setRequired(true))
+        )
+        .addSubcommand(s => s.setName('status').setDescription('Statistik quest server'))
         .toJSON()
 ];
 
 // ==========================================
-// KONFIGURASI QUEST
+// TIER DETECTION
 // ==========================================
-// type quest:
-//   - break_blocks: break N block (semua jenis)
-//   - play_manual:  klik Farm Manual N kali
-//   - play_auto:    auto farm N detik total
-//   - level_up:     naik N level
-//   - buy_item:     beli N item dari shop
-//   - use_item:     pakai N item (buff/instant)
-//   - gain_gems:    dapat N gems total
-//   - win_gacha:    roll gacha N kali
-//   - trade:        trade dengan player N kali
+function getTotalLockValue(ud) {
+    return (ud.locks.wl * 1) + (ud.locks.dl * 100) + (ud.locks.bgl * 10000) + (ud.locks.bglb * 1000000);
+}
 
-const DAILY_QUESTS = [
-    // ===== EASY =====
-    {
-        id: 'break_50',
-        type: 'break_blocks',
-        target: 50,
-        title: 'Pemula Tambang',
-        desc: 'Break 50 block (semua jenis)',
-        emoji: '⛏️',
-        reward: { gems: 50000, wl: 0 }
-    },
-    {
-        id: 'manual_10',
-        type: 'play_manual',
-        target: 10,
-        title: 'Manual Worker',
-        desc: 'Klik Farm Manual 10 kali',
-        emoji: '🌾',
-        reward: { gems: 30000, wl: 0 }
-    },
-    {
-        id: 'gems_100k',
-        type: 'gain_gems',
-        target: 100000,
-        title: 'Kolektor Gems',
-        desc: 'Kumpulkan 100.000 Gems hari ini',
-        emoji: '💰',
-        reward: { gems: 25000, wl: 0 }
-    },
-    // ===== MEDIUM =====
-    {
-        id: 'break_500',
-        type: 'break_blocks',
-        target: 500,
-        title: 'Penambang Ahli',
-        desc: 'Break 500 block',
-        emoji: '⚒️',
-        reward: { gems: 200000, wl: 5 }
-    },
-    {
-        id: 'level_2',
-        type: 'level_up',
-        target: 2,
-        title: 'Naik Kelas',
-        desc: 'Naik 2 level hari ini',
-        emoji: '📈',
-        reward: { gems: 150000, wl: 3 }
-    },
-    {
-        id: 'buy_5',
-        type: 'buy_item',
-        target: 5,
-        title: 'Shopper',
-        desc: 'Beli 5 item dari shop',
-        emoji: '🛒',
-        reward: { gems: 100000, wl: 2 }
-    },
-    {
-        id: 'use_3',
-        type: 'use_item',
-        target: 3,
-        title: 'Pengguna Item',
-        desc: 'Pakai 3 item (buff/instant)',
-        emoji: '🎒',
-        reward: { gems: 80000, wl: 2 }
-    },
-    // ===== HARD =====
-    {
-        id: 'break_2000',
-        type: 'break_blocks',
-        target: 2000,
-        title: 'Raja Tambang',
-        desc: 'Break 2.000 block',
-        emoji: '👑',
-        reward: { gems: 1000000, wl: 25 }
-    },
-    {
-        id: 'gacha_5',
-        type: 'win_gacha',
-        target: 5,
-        title: 'Penjudi Sejati',
-        desc: 'Roll gacha 5 kali',
-        emoji: '🎰',
-        reward: { gems: 500000, wl: 10 }
-    },
-    {
-        id: 'trade_1',
-        type: 'trade',
-        target: 1,
-        title: 'Pedagang',
-        desc: 'Trade dengan player lain 1 kali',
-        emoji: '🔄',
-        reward: { gems: 300000, wl: 8 }
-    },
-    {
-        id: 'auto_300',
-        type: 'play_auto',
-        target: 300,
-        title: 'Auto Master',
-        desc: 'Auto farm total 5 menit hari ini',
-        emoji: '🤖',
-        reward: { gems: 250000, wl: 6 }
-    },
-    // ===== EPIC =====
-    {
-        id: 'break_10000',
-        type: 'break_blocks',
-        target: 10000,
-        title: 'Legenda Tambang',
-        desc: 'Break 10.000 block dalam sehari',
-        emoji: '🌟',
-        reward: { gems: 5000000, wl: 100 }
-    },
-    {
-        id: 'gain_10m',
-        type: 'gain_gems',
-        target: 10000000,
-        title: 'Miliarder',
-        desc: 'Kumpulkan 10.000.000 Gems hari ini',
-        emoji: '💎',
-        reward: { gems: 3000000, wl: 75 }
-    }
-];
+function getTotalBlocks(ud) {
+    let total = 0;
+    const blocks = ud.blocks || {};
+    for (const k in blocks) total += (blocks[k] || 0);
+    return total;
+}
+
+function detectTier(ud) {
+    const lvl = ud.level || 1;
+    const gems = ud.gems || 0;
+    const totalWL = getTotalLockValue(ud);
+
+    if (lvl >= 100 || gems >= 1_000_000_000 || totalWL >= 50_000) return 'expert';
+    if (lvl >= 60 || gems >= 50_000_000 || totalWL >= 1_000) return 'advanced';
+    if (lvl >= 30 || gems >= 1_000_000 || totalWL >= 100) return 'intermediate';
+    if (lvl >= 10 || gems >= 100_000 || totalWL >= 10) return 'beginner';
+    return 'newbie';
+}
+
+const TIER_META = {
+    newbie:       { name: 'Newbie',       emoji: '🌱', color: '#57F287' },
+    beginner:     { name: 'Beginner',     emoji: '🌿', color: '#2ECC71' },
+    intermediate: { name: 'Intermediate', emoji: '⚡', color: '#F1C40F' },
+    advanced:     { name: 'Advanced',     emoji: '🔥', color: '#E67E22' },
+    expert:       { name: 'Expert',       emoji: '💎', color: '#9B59B6' }
+};
 
 // ==========================================
-// HELPER — Tanggal hari ini (reset tiap hari)
+// QUEST POOL per TIER
+// ==========================================
+const QUEST_POOL = {
+    newbie: [
+        { type: 'break_blocks', title: 'Tambang Pertama',  emoji: '⛏️', min: 30,    max: 80,     gems: 8000,   wl: 1 },
+        { type: 'play_manual',  title: 'Coba Manual Farm', emoji: '🌾', min: 5,     max: 15,     gems: 5000,   wl: 1 },
+        { type: 'play_auto',    title: 'Auto Sebentar',    emoji: '🤖', min: 60,    max: 180,    gems: 6000,   wl: 1 },
+        { type: 'gain_gems',    title: 'Kumpulkan Gems',   emoji: '💰', min: 20000, max: 50000,  gems: 4000,   wl: 1 },
+        { type: 'use_item',     title: 'Pakai Item',       emoji: '🎒', min: 1,     max: 2,      gems: 5000,   wl: 1 },
+        { type: 'buy_item',     title: 'Belanja Pertama',  emoji: '🛒', min: 1,     max: 2,      gems: 4000,   wl: 1 },
+        { type: 'break_blocks', title: 'Rajin Menambang',  emoji: '⚒️', min: 50,    max: 120,    gems: 10000,  wl: 2 },
+        { type: 'level_up',     title: 'Naik 1 Level',     emoji: '📈', min: 1,     max: 1,      gems: 10000,  wl: 2 }
+    ],
+    beginner: [
+        { type: 'break_blocks', title: 'Penambang Muda',   emoji: '⛏️', min: 150,   max: 400,    gems: 40000,  wl: 3 },
+        { type: 'play_manual',  title: 'Manual 20x',       emoji: '🌾', min: 15,    max: 30,     gems: 30000,  wl: 2 },
+        { type: 'play_auto',    title: 'Auto 5 Menit',     emoji: '🤖', min: 180,   max: 400,    gems: 35000,  wl: 3 },
+        { type: 'gain_gems',    title: 'Kumpulkan 200K',   emoji: '💰', min: 100000,max: 250000, gems: 25000,  wl: 2 },
+        { type: 'use_item',     title: 'Pakai 3 Item',     emoji: '🎒', min: 2,     max: 4,      gems: 30000,  wl: 2 },
+        { type: 'buy_item',     title: 'Belanja 3x',       emoji: '🛒', min: 2,     max: 4,      gems: 28000,  wl: 2 },
+        { type: 'level_up',     title: 'Naik 2 Level',     emoji: '📈', min: 1,     max: 2,      gems: 60000,  wl: 4 },
+        { type: 'win_gacha',    title: 'Coba Gacha',       emoji: '🎰', min: 1,     max: 3,      gems: 50000,  wl: 3 }
+    ],
+    intermediate: [
+        { type: 'break_blocks', title: 'Penambang Ahli',   emoji: '⚒️', min: 800,   max: 2000,   gems: 200000, wl: 8 },
+        { type: 'play_manual',  title: 'Manual 50x',       emoji: '🌾', min: 30,    max: 60,     gems: 150000, wl: 6 },
+        { type: 'play_auto',    title: 'Auto 15 Menit',    emoji: '🤖', min: 600,   max: 1200,   gems: 180000, wl: 7 },
+        { type: 'gain_gems',    title: 'Kumpulkan 5M',     emoji: '💰', min: 2000000,max: 5000000,gems: 120000, wl: 5 },
+        { type: 'use_item',     title: 'Pakai 5 Item',     emoji: '🎒', min: 4,     max: 8,      gems: 150000, wl: 5 },
+        { type: 'buy_item',     title: 'Belanja 5x',       emoji: '🛒', min: 4,     max: 8,      gems: 130000, wl: 5 },
+        { type: 'level_up',     title: 'Naik 3 Level',     emoji: '📈', min: 2,     max: 3,      gems: 300000, wl: 10 },
+        { type: 'win_gacha',    title: 'Gacha 3x',         emoji: '🎰', min: 3,     max: 6,      gems: 250000, wl: 8 },
+        { type: 'trade',        title: 'Trade Sekali',     emoji: '🔄', min: 1,     max: 1,      gems: 200000, wl: 6 }
+    ],
+    advanced: [
+        { type: 'break_blocks', title: 'Raja Tambang',     emoji: '👑', min: 5000,  max: 12000,  gems: 1000000,wl: 25 },
+        { type: 'play_manual',  title: 'Manual 100x',      emoji: '🌾', min: 80,    max: 150,    gems: 800000, wl: 20 },
+        { type: 'play_auto',    title: 'Auto 30 Menit',    emoji: '🤖', min: 1500,  max: 2500,   gems: 900000, wl: 22 },
+        { type: 'gain_gems',    title: 'Kumpulkan 50M',    emoji: '💰', min: 20000000, max: 50000000, gems: 700000, wl: 18 },
+        { type: 'use_item',     title: 'Pakai 10 Item',    emoji: '🎒', min: 8,     max: 15,     gems: 800000, wl: 18 },
+        { type: 'buy_item',     title: 'Belanja 10x',      emoji: '🛒', min: 8,     max: 15,     gems: 700000, wl: 18 },
+        { type: 'level_up',     title: 'Naik 4 Level',     emoji: '📈', min: 3,     max: 5,      gems: 1500000,wl: 35 },
+        { type: 'win_gacha',    title: 'Gacha 8x',         emoji: '🎰', min: 5,     max: 10,     gems: 1200000,wl: 28 },
+        { type: 'trade',        title: 'Trade 2x',         emoji: '🔄', min: 2,     max: 3,      gems: 1000000,wl: 22 }
+    ],
+    expert: [
+        { type: 'break_blocks', title: 'Legenda Tambang',  emoji: '🌟', min: 20000, max: 50000,  gems: 5000000,wl: 75 },
+        { type: 'play_manual',  title: 'Manual 200x',      emoji: '🌾', min: 150,   max: 300,    gems: 4000000,wl: 60 },
+        { type: 'play_auto',    title: 'Auto 60 Menit',    emoji: '🤖', min: 3000,  max: 5000,   gems: 4500000,wl: 65 },
+        { type: 'gain_gems',    title: 'Kumpulkan 500M',   emoji: '💰', min: 200000000, max: 500000000, gems: 3500000, wl: 55 },
+        { type: 'use_item',     title: 'Pakai 20 Item',    emoji: '🎒', min: 15,    max: 30,     gems: 4000000,wl: 55 },
+        { type: 'buy_item',     title: 'Belanja 20x',      emoji: '🛒', min: 15,    max: 30,     gems: 3500000,wl: 55 },
+        { type: 'level_up',     title: 'Naik 5 Level',     emoji: '📈', min: 4,     max: 7,      gems: 8000000,wl: 100 },
+        { type: 'win_gacha',    title: 'Gacha 15x',        emoji: '🎰', min: 10,    max: 20,     gems: 6000000,wl: 85 },
+        { type: 'trade',        title: 'Trade 5x',         emoji: '🔄', min: 3,     max: 6,      gems: 5000000,wl: 70 }
+    ]
+};
+
+// ==========================================
+// HELPER
 // ==========================================
 function getTodayKey() {
     const now = new Date();
-    // Pakai timezone Asia/Jakarta (WIB)
     const wib = new Date(now.getTime() + (7 * 60 * 60 * 1000));
     return `${wib.getUTCFullYear()}-${String(wib.getUTCMonth() + 1).padStart(2, '0')}-${String(wib.getUTCDate()).padStart(2, '0')}`;
 }
 
+function randInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
+
+function generateQuestsForUser(ud) {
+    const tier = detectTier(ud);
+    const pool = QUEST_POOL[tier];
+    const picked = shuffle(pool).slice(0, Math.min(5, pool.length));
+
+    const quests = picked.map((q, i) => {
+        const target = randInt(q.min, q.max);
+        const scale = 0.9 + (Math.random() * 0.3);
+        const rewardGems = Math.round(q.gems * scale / 1000) * 1000;
+        const rewardWL = Math.max(1, Math.round(q.wl * scale));
+
+        return {
+            id: `q${i}`,
+            type: q.type,
+            title: q.title,
+            emoji: q.emoji,
+            target,
+            reward: { gems: rewardGems, wl: rewardWL }
+        };
+    });
+
+    return { tier, quests };
+}
+
 // ==========================================
-// GET / INIT QUEST DATA USER
+// QUEST DATA
 // ==========================================
 function getQuestData(ud) {
     const today = getTodayKey();
 
-    if (!ud.quests || ud.quests.date !== today) {
+    if (
+        !ud.quests ||
+        ud.quests.date !== today ||
+        !ud.quests.quests ||
+        !Array.isArray(ud.quests.quests) ||
+        ud.quests.quests.length === 0
+    ) {
+        const gen = generateQuestsForUser(ud);
         ud.quests = {
             date: today,
-            progress: {},   // { questId: number }
-            claimed: {},    // { questId: true }
+            tier: gen.tier,
+            quests: gen.quests,
+            progress: {},
+            claimed: {},
             completed: 0
         };
+        for (const q of gen.quests) {
+            ud.quests.progress[q.id] = 0;
+            ud.quests.claimed[q.id] = false;
+        }
     }
 
-    // Pastikan semua quest ada di progress
-    for (const q of DAILY_QUESTS) {
+    for (const q of ud.quests.quests) {
         if (ud.quests.progress[q.id] === undefined) ud.quests.progress[q.id] = 0;
+        if (ud.quests.claimed[q.id] === undefined) ud.quests.claimed[q.id] = false;
     }
 
     return ud.quests;
 }
 
-// ==========================================
-// TAMBAH PROGRESS
-// ==========================================
 function addProgress(ud, type, amount = 1) {
     const qd = getQuestData(ud);
     let changed = false;
 
-    for (const q of DAILY_QUESTS) {
+    for (const q of qd.quests) {
         if (q.type !== type) continue;
         if (qd.claimed[q.id]) continue;
 
@@ -220,19 +225,15 @@ function addProgress(ud, type, amount = 1) {
     return changed;
 }
 
-// ==========================================
-// AUTO-CLAIM REWARD (saat progress penuh)
-// ==========================================
 function autoClaim(ud) {
     const qd = getQuestData(ud);
     const rewards = [];
 
-    for (const q of DAILY_QUESTS) {
+    for (const q of qd.quests) {
         if (qd.claimed[q.id]) continue;
         if ((qd.progress[q.id] || 0) >= q.target) {
-            // Auto claim
             qd.claimed[q.id] = true;
-            qd.completed++;
+            qd.completed = (qd.completed || 0) + 1;
 
             if (q.reward.gems > 0) ud.gems += q.reward.gems;
             if (q.reward.wl > 0) ud.locks.wl += q.reward.wl;
@@ -253,63 +254,51 @@ function autoClaim(ud) {
 // ==========================================
 function buildQuestEmbed(ud) {
     const qd = getQuestData(ud);
+    const meta = TIER_META[qd.tier] || TIER_META.newbie;
 
-    const easy = [];
-    const medium = [];
-    const hard = [];
-    const epic = [];
-
-    for (const q of DAILY_QUESTS) {
+    const lines = qd.quests.map(q => {
         const prog = qd.progress[q.id] || 0;
         const done = qd.claimed[q.id];
         const barLength = 10;
         const filled = Math.min(Math.round((prog / q.target) * barLength), barLength);
         const bar = '█'.repeat(filled) + '░'.repeat(barLength - filled);
+        const status = done ? '✅' : (prog >= q.target ? '🎁' : '⏳');
+        const rewardParts = [];
+        if (q.reward.gems > 0) rewardParts.push(`💰 ${q.reward.gems.toLocaleString()}`);
+        if (q.reward.wl > 0) rewardParts.push(`🔹 ${q.reward.wl} WL`);
 
-        const rewardText = [];
-        if (q.reward.gems > 0) rewardText.push(`💰 ${q.reward.gems.toLocaleString()}`);
-        if (q.reward.wl > 0) rewardText.push(`🔹 ${q.reward.wl} WL`);
+        return `${status} ${q.emoji} **${q.title}**${done ? ' — *SELESAI*' : ''}\n` +
+               `> \`${bar}\` **${Math.min(prog, q.target).toLocaleString()}/${q.target.toLocaleString()}**\n` +
+               `> 🎁 ${rewardParts.join(' • ')}`;
+    });
 
-        const statusIcon = done ? '✅' : (prog >= q.target ? '🎁' : '⏳');
-        const line = `${statusIcon} ${q.emoji} **${q.title}**${done ? ' — *SELESAI*' : ''}\n> ${q.desc}\n> \`${bar}\` **${Math.min(prog, q.target).toLocaleString()}/${q.target.toLocaleString()}**\n> 🎁 ${rewardText.join(' • ')}`;
-
-        // Klasifikasi berdasarkan reward
-        const totalReward = q.reward.gems + (q.reward.wl * 2000000);
-        if (q.reward.wl >= 50 || q.reward.gems >= 3000000) epic.push(line);
-        else if (q.reward.wl >= 10 || q.reward.gems >= 500000) hard.push(line);
-        else if (q.reward.wl >= 2 || q.reward.gems >= 80000) medium.push(line);
-        else easy.push(line);
-    }
-
-    // Hitung total reward hari ini
-    const totalCompleted = qd.completed;
-    const totalQuests = DAILY_QUESTS.length;
-
-    const fields = [];
-    if (easy.length) fields.push({ name: '🟢 EASY', value: easy.join('\n\n'), inline: false });
-    if (medium.length) fields.push({ name: '🟡 MEDIUM', value: medium.join('\n\n'), inline: false });
-    if (hard.length) fields.push({ name: '🔴 HARD', value: hard.join('\n\n'), inline: false });
-    if (epic.length) fields.push({ name: '🌟 EPIC', value: epic.join('\n\n'), inline: false });
+    const totalDone = qd.completed || 0;
+    const totalQuests = qd.quests.length;
 
     return new EmbedBuilder()
-        .setColor('#9B59B6')
+        .setColor(meta.color)
         .setTitle('📜 Daily Quest')
         .setDescription(
-            `**Progress hari ini:** **${totalCompleted} / ${totalQuests}** quest selesai\n` +
-            `> 📅 Tanggal: **${qd.date}**\n` +
-            `> 🔄 Reset otomatis setiap hari (WIB)\n` +
-            `> 🎁 Reward **otomatis masuk** saat quest selesai!`
+            `${meta.emoji} **Tier kamu:** **${meta.name}**\n` +
+            `📅 Tanggal: **${qd.date}**\n` +
+            `📊 Progress: **${totalDone} / ${totalQuests}** quest selesai\n\n` +
+            `> 🔄 Quest auto-reset tiap hari (WIB)\n` +
+            `> 🎁 Reward **otomatis masuk** saat selesai\n` +
+            `> 🎲 Quest di-random sesuai tier kamu`
         )
-        .addFields(...fields)
-        .setFooter({ text: `Quest otomatis reset besok · Klik tombol di bawah untuk refresh` })
+        .addFields({ name: '📋  Daftar Quest', value: lines.join('\n\n'), inline: false })
+        .setFooter({ text: 'GrowExs Daily Quest · Refresh manual dengan tombol di bawah' })
         .setTimestamp();
 }
 
 function buildQuestButtons() {
     return [
         new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId('quest_refresh').setLabel('🔄 Refresh Progress').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId('quest_summary').setLabel('📊 Ringkasan Hari Ini').setStyle(ButtonStyle.Secondary)
+            new ButtonBuilder().setCustomId('quest_refresh').setLabel('🔄 Refresh').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId('quest_summary').setLabel('📊 Ringkasan').setStyle(ButtonStyle.Secondary)
+        ),
+        new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary)
         )
     ];
 }
@@ -335,23 +324,18 @@ async function handleQuestInteraction(interaction) {
     return false;
 }
 
-// ==========================================
-// /quest
-// ==========================================
 async function handleQuestCommand(interaction) {
     await interaction.deferReply({ ephemeral: true });
 
     const ud = db.getUser(interaction.user.id, interaction.user.username);
     getQuestData(ud);
 
-    // Auto-claim yang sudah selesai
     const rewards = autoClaim(ud);
     if (rewards.length > 0) db.saveUser(ud);
 
     const embed = buildQuestEmbed(ud);
     const buttons = buildQuestButtons();
 
-    // Kalau ada reward baru, tampilkan notifikasi
     if (rewards.length > 0) {
         const rewardLines = rewards.map(r => {
             const parts = [];
@@ -370,15 +354,11 @@ async function handleQuestCommand(interaction) {
     return interaction.editReply({ embeds: [embed], components: buttons });
 }
 
-// ==========================================
-// BUTTON HANDLER
-// ==========================================
 async function handleQuestButton(interaction) {
     const userId = interaction.user.id;
     const ud = db.getUser(userId, interaction.user.username);
     getQuestData(ud);
 
-    // Refresh
     if (interaction.customId === 'quest_refresh') {
         const rewards = autoClaim(ud);
         if (rewards.length > 0) db.saveUser(ud);
@@ -405,32 +385,30 @@ async function handleQuestButton(interaction) {
         return;
     }
 
-    // Summary
     if (interaction.customId === 'quest_summary') {
         const qd = getQuestData(ud);
-        const lines = [];
-
-        for (const q of DAILY_QUESTS) {
+        const lines = qd.quests.map(q => {
             const prog = qd.progress[q.id] || 0;
             const done = qd.claimed[q.id];
             const status = done ? '✅' : (prog >= q.target ? '🎁' : '⏳');
-            lines.push(`${status} ${q.emoji} ${q.title} — **${Math.min(prog, q.target)}/${q.target}**`);
-        }
+            return `${status} ${q.emoji} ${q.title} — **${Math.min(prog, q.target)}/${q.target}**`;
+        });
 
-        const totalDone = qd.completed;
-        const totalPossible = DAILY_QUESTS.length;
+        const totalDone = qd.completed || 0;
+        const totalPossible = qd.quests.length;
         const percent = Math.round((totalDone / totalPossible) * 100);
-
         const barLength = 15;
         const filled = Math.round((totalDone / totalPossible) * barLength);
         const progressBar = '█'.repeat(filled) + '░'.repeat(barLength - filled);
+        const meta = TIER_META[qd.tier] || TIER_META.newbie;
 
         return interaction.reply({
             embeds: [new EmbedBuilder()
-                .setColor('#F1C40F')
+                .setColor(meta.color)
                 .setTitle('📊 Quest Summary')
                 .setDescription(
-                    `**Progress:** \`${progressBar}\` **${percent}%**\n\n` +
+                    `${meta.emoji} Tier: **${meta.name}**\n` +
+                    `\`${progressBar}\` **${percent}%**\n\n` +
                     lines.join('\n')
                 )
                 .setFooter({ text: `Total: ${totalDone}/${totalPossible} quest` })],
@@ -439,24 +417,18 @@ async function handleQuestButton(interaction) {
     }
 }
 
-// ==========================================
-// ADMIN HANDLER
-// ==========================================
 async function handleQuestAdmin(interaction) {
     if (!interaction.guild) return interaction.reply({ content: '❌ Hanya di server.', ephemeral: true });
     await interaction.deferReply({ ephemeral: true });
 
     const sub = interaction.options.getSubcommand();
 
-    // ===== GIVE =====
     if (sub === 'give') {
         const target = interaction.options.getUser('user');
         const gems = interaction.options.getInteger('gems') || 0;
         const wl = interaction.options.getInteger('wl') || 0;
 
-        if (gems === 0 && wl === 0) {
-            return interaction.editReply({ content: '❌ Minimal kasih gems atau WL.' });
-        }
+        if (gems === 0 && wl === 0) return interaction.editReply({ content: '❌ Minimal kasih gems atau WL.' });
 
         const tud = db.getUser(target.id, target.username);
         if (gems > 0) tud.gems += gems;
@@ -468,33 +440,31 @@ async function handleQuestAdmin(interaction) {
         if (wl > 0) parts.push(`🔹 **+${wl} WL**`);
 
         return interaction.editReply({
-            content: `✅ **Give reward manual berhasil!**\n\n> 👤 Target: **${target.username}**\n> 🎁 ${parts.join('\n> 🎁 ')}`
+            content: `✅ **Give reward berhasil!**\n\n> 👤 Target: **${target.username}**\n> 🎁 ${parts.join('\n> 🎁 ')}`
         });
     }
 
-    // ===== RESET ALL =====
-    if (sub === 'resetall') {
-        const allUsers = db.getAllUsers();
-        let count = 0;
-        for (const u of allUsers) {
-            u.quests = null;
-            db.saveUser(u);
-            count++;
-        }
-        return interaction.editReply({ content: `✅ Reset quest untuk **${count}** user.` });
+    if (sub === 'reroll') {
+        const target = interaction.options.getUser('user');
+        const tud = db.getUser(target.id, target.username);
+        tud.quests = null;
+        getQuestData(tud);
+        db.saveUser(tud);
+        return interaction.editReply({ content: `✅ Quest **${target.username}** di-reroll (tier: **${tud.quests.tier}**).` });
     }
 
-    // ===== STATUS =====
     if (sub === 'status') {
         const today = getTodayKey();
         const allUsers = db.getAllUsers();
         let active = 0;
         let totalDone = 0;
+        const tierCount = { newbie: 0, beginner: 0, intermediate: 0, advanced: 0, expert: 0 };
 
         for (const u of allUsers) {
             if (u.quests && u.quests.date === today) {
                 active++;
                 totalDone += u.quests.completed || 0;
+                if (tierCount[u.quests.tier] !== undefined) tierCount[u.quests.tier]++;
             }
         }
 
@@ -505,22 +475,30 @@ async function handleQuestAdmin(interaction) {
                 .addFields(
                     { name: '📅 Tanggal', value: today, inline: true },
                     { name: '👥 User Aktif', value: `${active}`, inline: true },
-                    { name: '✅ Total Quest Selesai', value: `${totalDone}`, inline: true },
-                    { name: '📜 Total Quest Tersedia', value: `${DAILY_QUESTS.length}`, inline: true }
+                    { name: '✅ Total Selesai', value: `${totalDone}`, inline: true },
+                    { name: '🌱 Newbie', value: `${tierCount.newbie}`, inline: true },
+                    { name: '🌿 Beginner', value: `${tierCount.beginner}`, inline: true },
+                    { name: '⚡ Intermediate', value: `${tierCount.intermediate}`, inline: true },
+                    { name: '🔥 Advanced', value: `${tierCount.advanced}`, inline: true },
+                    { name: '💎 Expert', value: `${tierCount.expert}`, inline: true }
                 )]
         });
     }
 }
 
 // ==========================================
-// EXPORT HELPER — dipakai index.js
+// EXPORT
 // ==========================================
 function trackQuest(ud, type, amount = 1) {
-    const changed = addProgress(ud, type, amount);
-    if (!changed) return [];
-
-    const rewards = autoClaim(ud);
-    return rewards;
+    try {
+        const changed = addProgress(ud, type, amount);
+        if (!changed) return [];
+        const rewards = autoClaim(ud);
+        return rewards;
+    } catch (e) {
+        console.error('trackQuest error:', e.message);
+        return [];
+    }
 }
 
 module.exports = {
@@ -529,5 +507,8 @@ module.exports = {
     trackQuest,
     autoClaim,
     getQuestData,
-    DAILY_QUESTS
+    buildQuestEmbed,
+    buildQuestButtons,
+    detectTier,
+    TIER_META
 };
