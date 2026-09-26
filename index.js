@@ -2237,10 +2237,10 @@ client.on('interactionCreate', async interaction => {
 
             // ===== BELI BLOCK PAKAI WL =====
             if (interaction.customId.startsWith('modal_buyblock_')) {
-    const k = interaction.customId.replace('modal_buyblock_', '');
-    const b = SHOP_BLOCKS[k];
-    if (!b) return interaction.reply({ content: '❌ Block invalid.', ephemeral: true });
-    if (isUnlimited(k)) return interaction.reply({ content: `♾️ Unlimited!`, ephemeral: true });
+                const k = interaction.customId.replace('modal_buyblock_', '');
+                const b = SHOP_BLOCKS[k];
+                if (!b) return interaction.reply({ content: '❌ Block invalid.', ephemeral: true });
+                if (isUnlimited(k)) return interaction.reply({ content: `♾️ Unlimited!`, ephemeral: true });
 
     // Hitung total WL
     let totalWL;
