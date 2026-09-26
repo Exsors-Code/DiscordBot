@@ -788,8 +788,9 @@ function shopMainEmbed(ud) {
             { name: '🛠️ Tools', value: 'Tool boost farming', inline: true },
             { name: '🪨 Blocks', value: 'Beli block pakai WL', inline: true },
             { name: '🎒 Items', value: 'Buff, instant & gacha ticket', inline: true },
-            { name: '🔒 Locks', value: 'Beli lock', inline: true }
-        ).setFooter({ text: `Gems: ${Math.floor(ud.gems).toLocaleString()} • WL: ${formatWL(ud.locks.wl)}` });
+            { name: '🔒 Locks', value: 'Beli lock', inline: true },
+            { name: '💎 Total WL', value: `**${formatWL(getTotalLockValue(ud))}**\n> ${lockSummary(ud)}`, inline: true }
+        ).setFooter({ text: `Gems: ${Math.floor(ud.gems).toLocaleString()} • 1 DL = 100 WL • 1 BGL = 10.000 WL • 1 BGLB = 1.000.000 WL` });
 }
 function shopMainButtons() {
     return [
