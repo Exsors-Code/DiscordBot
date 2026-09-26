@@ -1203,21 +1203,17 @@ function profileEmbed(ud) {
             { name: '🏆 Level', value: `${ud.level}`, inline: true },
             { name: '🛠️ Tool', value: t ? `${t.emoji} ${t.name}` : 'Tidak ada', inline: true },
             { name: '💰 Gems', value: Math.floor(ud.gems).toLocaleString(), inline: true },
-            { name: `${EMOJI.wl} WL`, value: formatWL(ud.locks.wl), inline: true },
+            { name: '💎 Total WL', value: `**${formatWL(tv)}**\n> ${lockSummary(ud)}`, inline: true },
             { name: '⭐ SP', value: `${ud.skillPoints}`, inline: true },
             { name: '🎰 Total Roll', value: `${ud.totalGachaRolls || 0}`, inline: true },
-            { name: '📜 Quest', value: questLine, inline: true },
             { name: '💎 Booster', value:
                 `${ANCES_RED.emoji} **Ances Red** · Lv.${ancesLevel}/${ANCES_RED.maxLevel}\n` +
                 `${GANG.emoji} **Gang** · ${gangCount}/${GANG.maxCount}\n` +
                 `✨ **Total Boost** · **+${Math.round((totalBoost - 1) * 100)}%** Gems`, inline: false },
-            { name: '🔒 Locks', value:
-                `${EMOJI.wl} **WL**: ${formatWL(ud.locks.wl)}\n` +
-                `${EMOJI.dl} **DL**: ${formatWL(ud.locks.dl)}\n` +
-                `${EMOJI.bgl} **BGL**: ${formatWL(ud.locks.bgl)}\n` +
-                `${EMOJI.black} **BGLB**: ${formatWL(ud.locks.bglb)}\n` +
-                `**Total: ${formatWL(tv)} WL**`, inline: false }
-        );
+            { name: '📜 Quest', value: questLine, inline: false },
+            { name: '🔒 Lock & Konversi', value: lockDetail(ud), inline: false }
+        )
+        .setFooter({ text: 'Total WL = WL×1 + DL×100 + BGL×10.000 + BGLB×1.000.000' });
 }
 function profileButtons() {
     return [new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('nav_main').setLabel('🏠 Main Menu').setStyle(ButtonStyle.Secondary))];
