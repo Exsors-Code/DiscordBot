@@ -456,7 +456,7 @@ function lockSummary(ud) {
 function lockDetail(ud) {
     const lines = Object.entries(LOCK_INFO).map(([k, i]) => {
         const amount = ud.locks[k] || 0;
-        return `${i.emoji} **${i.name}** ×${formatWL(amount)}  ·  💎 = **${formatWL(amount * i.worth)} WL**`;
+        return `${i.emoji} **${i.name}** ×${formatWL(amount)}  ·  ${EMOJI.wl} = **${formatWL(amount * i.worth)} WL**`;
     });
     return lines.join('\n') +
         `\n\n> 🔄 **Auto-convert:** 100 ${EMOJI.wl} → 1 ${EMOJI.dl} → 1 ${EMOJI.bgl} → 1 ${EMOJI.black}` +
@@ -790,7 +790,7 @@ function shopMainEmbed(ud) {
             { name: '🎒 Items', value: 'Buff, instant & gacha ticket', inline: true },
             { name: '🔒 Locks', value: 'Beli lock', inline: true },
             { name: '💎 Total WL', value: `**${formatWL(getTotalLockValue(ud))}**\n> ${lockSummary(ud)}`, inline: true }
-        ).setFooter({ text: `Gems: ${Math.floor(ud.gems).toLocaleString()} • 1 DL = 100 WL • 1 BGL = 10.000 WL • 1 BGLB = 1.000.000 WL` });
+        ).setFooter({ text: `Gems: ${Math.floor(ud.gems).toLocaleString()} • 1 ${EMOJI.dl} = 100 ${EMOJI.wl} • 1 ${EMOJI.bgl} = 10.000 ${EMOJI.wl} • 1 ${EMOJI.black} = 1.000.000 ${EMOJI.wl}` });
 }
 function shopMainButtons() {
     return [
