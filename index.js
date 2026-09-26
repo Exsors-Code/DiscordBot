@@ -456,7 +456,8 @@ function lockSummary(ud) {
 function lockDetail(ud) {
     const lines = Object.entries(LOCK_INFO).map(([k, i]) => {
         const amount = ud.locks[k] || 0;
-        return `${i.emoji} **${i.name}** ×${formatWL(amount)}  ·  ${EMOJI.wl} = **${formatWL(amount * i.worth)} WL**`;
+        if (amount > 0) return `${i.emoji} **${i.name}** ×${formatWL(amount)}  ·  ${EMOJI.wl} **${formatWL(amount * i.worth)} WL**`;
+        return `${i.emoji} **${i.name}** ×0  ·  *1 ${i.name} = ${i.worth.toLocaleString('id-ID')} ${EMOJI.wl}*`;
     });
     return lines.join('\n') +
         `\n\n> 🔄 **Auto-convert:** 100 ${EMOJI.wl} → 1 ${EMOJI.dl} → 1 ${EMOJI.bgl} → 1 ${EMOJI.black}` +
