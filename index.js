@@ -461,7 +461,7 @@ function lockDetail(ud) {
     return lines.join('\n') +
         `\n\n> 🔄 **Auto-convert:** 100 ${EMOJI.wl} → 1 ${EMOJI.dl} → 1 ${EMOJI.bgl} → 1 ${EMOJI.black}` +
         `\n> 🛒 Saat belanja, lock otomatis terpakai dari yang **paling besar** dulu.` +
-        `\n> 💎 **Total: ${formatWL(getTotalLockValue(ud))} WL**`;
+        `\n> ${EMOJI.wl} **Total: ${formatWL(getTotalLockValue(ud))} WL**`;
 }
 
 function formatStock(k, a) {
