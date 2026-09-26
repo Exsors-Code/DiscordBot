@@ -38,38 +38,35 @@ db.exec(`
         lastBreak TEXT DEFAULT 'Auto Farm belum dinyalakan.',
         event_name TEXT DEFAULT 'Tidak Ada Event',
         event_gemsMult INTEGER DEFAULT 1,
-        event_blocksMult INTEGER DEFAULT 1
+        event_blocksMult INTEGER DEFAULT 1,
+        items_json TEXT DEFAULT '{}',
+        buff_timewarp INTEGER DEFAULT 0,
+        blocks_json TEXT DEFAULT '{}',
+        quests_json TEXT DEFAULT '{}',
+        totalGachaRolls INTEGER DEFAULT 0
     )
 `);
 
 // ==========================================
-// MIGRATIONS
+// MIGRATION (aman dijalankan berkali-kali)
 // ==========================================
 function tryMigration(sql, label) {
     try {
         db.exec(sql);
         console.log(`✅ Migration: ${label}`);
-    } catch (e) {}
+    } catch (e) {
+        // sudah ada, skip
+    }
 }
 
-tryMigration(`ALTER TABLE users ADD COLUMN items_json TEXT DEFAULT '{}'`, 'users.items_json');
-tryMigration(`ALTER TABLE users ADD COLUMN buff_timewarp INTEGER DEFAULT 0`, 'users.buff_timewarp');
-tryMigration(`ALTER TABLE users ADD COLUMN gacha_rolls_today INTEGER DEFAULT 0`, 'users.gacha_rolls_today');
-tryMigration(`ALTER TABLE users ADD COLUMN gacha_last_date TEXT DEFAULT ''`, 'users.gacha_last_date');
-tryMigration(`ALTER TABLE users ADD COLUMN total_gacha_rolls INTEGER DEFAULT 0`, 'users.total_gacha_rolls');
+tryMigration(`ALTER TABLE users ADD COLUMN items_json TEXT DEFAULT '{}'`, 'kolom items_json');
+tryMigration(`ALTER TABLE users ADD COLUMN buff_timewarp INTEGER DEFAULT 0`, 'kolom buff_timewarp');
+tryMigration(`ALTER TABLE users ADD COLUMN blocks_json TEXT DEFAULT '{}'`, 'kolom blocks_json');
+tryMigration(`ALTER TABLE users ADD COLUMN quests_json TEXT DEFAULT '{}'`, 'kolom quests_json');
+tryMigration(`ALTER TABLE users ADD COLUMN totalGachaRolls INTEGER DEFAULT 0`, 'kolom totalGachaRolls');
 
 // ==========================================
-// GLOBAL STATS (untuk supply terbatas)
-// ==========================================
-db.exec(`
-    CREATE TABLE IF NOT EXISTS global_stats (
-        key TEXT PRIMARY KEY,
-        value INTEGER DEFAULT 0
-    )
-`);
-
-// ==========================================
-// GUILD CONFIG
+// TABEL GUILD CONFIG
 // ==========================================
 db.exec(`
     CREATE TABLE IF NOT EXISTS guild_config (
@@ -80,9 +77,9 @@ db.exec(`
     )
 `);
 
-tryMigration(`ALTER TABLE guild_config ADD COLUMN afkCheckEnabled INTEGER DEFAULT 0`, 'guild_config.afkCheckEnabled');
-tryMigration(`ALTER TABLE guild_config ADD COLUMN afkCheckInterval INTEGER DEFAULT 20`, 'guild_config.afkCheckInterval');
-tryMigration(`ALTER TABLE guild_config ADD COLUMN afkCheckTimeout INTEGER DEFAULT 120`, 'guild_config.afkCheckTimeout');
+tryMigration(`ALTER TABLE guild_config ADD COLUMN afkCheckEnabled INTEGER DEFAULT 0`, 'kolom afkCheckEnabled');
+tryMigration(`ALTER TABLE guild_config ADD COLUMN afkCheckInterval INTEGER DEFAULT 20`, 'kolom afkCheckInterval');
+tryMigration(`ALTER TABLE guild_config ADD COLUMN afkCheckTimeout INTEGER DEFAULT 120`, 'kolom afkCheckTimeout');
 
 db.exec(`
     CREATE TABLE IF NOT EXISTS welcome_config (
@@ -217,34 +214,63 @@ db.exec(`
     )
 `);
 
+// ==========================================
+// 🎰 GLOBAL STATS (untuk Gang global supply dll)
+// ==========================================
+db.exec(`
+    CREATE TABLE IF NOT EXISTS global_stats (
+        key TEXT PRIMARY KEY,
+        value INTEGER DEFAULT 0
+    )
+`);
+
 console.log('✅ Database SQLite siap!');
 
 // ==========================================
 // USER CRUD
 // ==========================================
-function getTodayDate() {
-    return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-}
-
 function rowToUser(row) {
     if (!row) return null;
-    let extraItems = {};
-    try { extraItems = JSON.parse(row.items_json || '{}'); } catch (e) { extraItems = {}; }
 
-    const today = getTodayDate();
-    const rollsToday = (row.gacha_last_date === today) ? (row.gacha_rolls_today || 0) : 0;
+    let extraItems = {};
+    let extraBlocks = {};
+    let questsData = null;
+
+    try { extraItems = JSON.parse(row.items_json || '{}'); } catch (e) { extraItems = {}; }
+    try { extraBlocks = JSON.parse(row.blocks_json || '{}'); } catch (e) { extraBlocks = {}; }
+    try { questsData = JSON.parse(row.quests_json || 'null'); } catch (e) { questsData = null; }
 
     return {
         userId: row.userId, username: row.username,
         level: row.level, xp: row.xp, maxXp: row.maxXp, skillPoints: row.skillPoints,
         gems: row.gems,
-        blocks: { dirt: row.dirt, pog: row.pog },
+        blocks: {
+            dirt: row.dirt,
+            pog: row.pog,
+            // semua block dari JSON
+            sand: extraBlocks.sand || 0,
+            gravel: extraBlocks.gravel || 0,
+            grass: extraBlocks.grass || 0,
+            clay: extraBlocks.clay || 0,
+            stone: extraBlocks.stone || 0,
+            iron: extraBlocks.iron || 0,
+            gold: extraBlocks.gold || 0,
+            emerald: extraBlocks.emerald || 0,
+            diamond: extraBlocks.diamond || 0,
+            ruby: extraBlocks.ruby || 0,
+            sapphire: extraBlocks.sapphire || 0,
+            netherite: extraBlocks.netherite || 0,
+            obsidian: extraBlocks.obsidian || 0,
+            bedrock: extraBlocks.bedrock || 0
+        },
         selectedBlock: row.selectedBlock,
         ownedTools: row.ownedTools ? row.ownedTools.split(',').filter(Boolean) : [],
         equippedTool: row.equippedTool || null,
         skills: {
-            mining_speed: row.skill_mining_speed, gem_hunter: row.skill_gem_hunter,
-            lucky_find: row.skill_lucky_find, xp_boost: row.skill_xp_boost,
+            mining_speed: row.skill_mining_speed,
+            gem_hunter: row.skill_gem_hunter,
+            lucky_find: row.skill_lucky_find,
+            xp_boost: row.skill_xp_boost,
             inventory_master: row.skill_inventory_master
         },
         items: {
@@ -255,7 +281,8 @@ function rowToUser(row) {
             bomb: extraItems.bomb || 0,
             timewarp: extraItems.timewarp || 0,
             gbc: extraItems.gbc || 0,
-            gang: extraItems.gang || 0
+            gang: extraItems.gang || 0,
+            ancesRedLevel: extraItems.ancesRedLevel || 0   // ✅ AUTO SAVE
         },
         activeBuffs: {
             arroz: row.buff_arroz,
@@ -267,10 +294,8 @@ function rowToUser(row) {
         lastBreak: row.lastBreak,
         currentView: 'main',
         event: { name: row.event_name, gemsMult: row.event_gemsMult, blocksMult: row.event_blocksMult },
-
-        // ===== GACHA =====
-        gachaRollsToday: rollsToday,
-        totalGachaRolls: row.total_gacha_rolls || 0
+        quests: questsData,
+        totalGachaRolls: row.totalGachaRolls || 0
     };
 }
 
@@ -297,34 +322,63 @@ function getUser(userId, username) {
 function saveUser(ud) {
     try {
         autoConvertLocks(ud);
+
+        // ✅ Simpan SEMUA items (termasuk ancesRedLevel, gang, gbc)
         const extraItems = {
             gempack: ud.items.gempack || 0,
             xpscroll: ud.items.xpscroll || 0,
             bomb: ud.items.bomb || 0,
             timewarp: ud.items.timewarp || 0,
             gbc: ud.items.gbc || 0,
-            gang: ud.items.gang || 0
+            gang: ud.items.gang || 0,
+            ancesRedLevel: ud.items.ancesRedLevel || 0
         };
+
+        // ✅ Simpan SEMUA blocks (kecuali dirt & pog yang punya kolom sendiri)
+        const extraBlocks = {
+            sand: ud.blocks.sand || 0,
+            gravel: ud.blocks.gravel || 0,
+            grass: ud.blocks.grass || 0,
+            clay: ud.blocks.clay || 0,
+            stone: ud.blocks.stone || 0,
+            iron: ud.blocks.iron || 0,
+            gold: ud.blocks.gold || 0,
+            emerald: ud.blocks.emerald || 0,
+            diamond: ud.blocks.diamond || 0,
+            ruby: ud.blocks.ruby || 0,
+            sapphire: ud.blocks.sapphire || 0,
+            netherite: ud.blocks.netherite || 0,
+            obsidian: ud.blocks.obsidian || 0,
+            bedrock: ud.blocks.bedrock || 0
+        };
+
+        // ✅ Simpan quest data
+        const questsJson = ud.quests ? JSON.stringify(ud.quests) : '{}';
+
         db.prepare(`
             UPDATE users SET username = ?, level = ?, xp = ?, maxXp = ?, skillPoints = ?,
                 gems = ?, dirt = ?, pog = ?, selectedBlock = ?, ownedTools = ?, equippedTool = ?,
                 skill_mining_speed = ?, skill_gem_hunter = ?, skill_lucky_find = ?, skill_xp_boost = ?, skill_inventory_master = ?,
                 item_arroz = ?, item_clover = ?, buff_arroz = ?, buff_clover = ?,
-                items_json = ?, buff_timewarp = ?,
+                items_json = ?, buff_timewarp = ?, blocks_json = ?, quests_json = ?, totalGachaRolls = ?,
                 lock_wl = ?, lock_dl = ?, lock_bgl = ?, lock_bglb = ?,
                 autoFarm = ?, lastBreak = ?, event_name = ?, event_gemsMult = ?, event_blocksMult = ?
             WHERE userId = ?
         `).run(
             ud.username, ud.level, ud.xp, ud.maxXp, ud.skillPoints,
-            Math.floor(ud.gems), ud.blocks.dirt, ud.blocks.pog, ud.selectedBlock,
+            Math.floor(ud.gems), ud.blocks.dirt || 0, ud.blocks.pog || 0, ud.selectedBlock,
             ud.ownedTools.join(','), ud.equippedTool,
             ud.skills.mining_speed, ud.skills.gem_hunter, ud.skills.lucky_find, ud.skills.xp_boost, ud.skills.inventory_master,
             ud.items.arroz, ud.items.clover, ud.activeBuffs.arroz, ud.activeBuffs.clover,
             JSON.stringify(extraItems), ud.activeBuffs.timewarp || 0,
+            JSON.stringify(extraBlocks), questsJson, ud.totalGachaRolls || 0,
             ud.locks.wl, ud.locks.dl, ud.locks.bgl, ud.locks.bglb,
-            ud.autoFarm ? 1 : 0, ud.lastBreak, ud.event.name, ud.event.gemsMult, ud.event.blocksMult, ud.userId
+            ud.autoFarm ? 1 : 0, ud.lastBreak, ud.event.name, ud.event.gemsMult, ud.event.blocksMult,
+            ud.userId
         );
-    } catch (err) { console.error('❌ Gagal save user:', err.message); }
+    } catch (err) {
+        console.error('❌ Gagal save user:', err.message);
+    }
 }
 
 function getAllUsers() { return db.prepare('SELECT * FROM users').all().map(rowToUser); }
@@ -337,31 +391,20 @@ function resetUser(userId) {
 }
 
 // ==========================================
-// GACHA FUNCTIONS
+// GLOBAL STATS
 // ==========================================
-function incrementGachaRoll(userId) {
-    const today = getTodayDate();
-    const row = db.prepare('SELECT gacha_rolls_today, gacha_last_date FROM users WHERE userId = ?').get(userId);
-    if (!row) return;
-    if (row.gacha_last_date !== today) {
-        db.prepare('UPDATE users SET gacha_rolls_today = 1, gacha_last_date = ?, total_gacha_rolls = total_gacha_rolls + 1 WHERE userId = ?').run(today, userId);
-    } else {
-        db.prepare('UPDATE users SET gacha_rolls_today = gacha_rolls_today + 1, total_gacha_rolls = total_gacha_rolls + 1 WHERE userId = ?').run(userId);
-    }
-}
-
 function getGlobalStat(key) {
     const row = db.prepare('SELECT value FROM global_stats WHERE key = ?').get(key);
     return row ? row.value : 0;
 }
-
-function incrementGlobalStat(key, amount = 1) {
-    const existing = db.prepare('SELECT value FROM global_stats WHERE key = ?').get(key);
-    if (!existing) {
-        db.prepare('INSERT INTO global_stats (key, value) VALUES (?, ?)').run(key, amount);
-    } else {
-        db.prepare('UPDATE global_stats SET value = value + ? WHERE key = ?').run(amount, key);
-    }
+function setGlobalStat(key, value) {
+    db.prepare(`INSERT INTO global_stats (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(key, value);
+}
+function incrementGlobalStat(key, amount) {
+    const current = getGlobalStat(key);
+    setGlobalStat(key, current + amount);
+    return current + amount;
 }
 
 // ==========================================
@@ -376,6 +419,7 @@ function updateLeaderboardMessage(g, m) { db.prepare('UPDATE guild_config SET le
 function getAllGuildConfigs() { return db.prepare('SELECT * FROM guild_config').all(); }
 function removeGuildConfig(g) { db.prepare('DELETE FROM guild_config WHERE guildId = ?').run(g); }
 
+// ===== AFK CHECK =====
 function getAfkCheckConfig(guildId) {
     const row = db.prepare('SELECT afkCheckEnabled, afkCheckInterval, afkCheckTimeout FROM guild_config WHERE guildId = ?').get(guildId);
     if (!row) return { enabled: false, intervalMinutes: 20, timeoutSeconds: 120 };
@@ -507,7 +551,7 @@ function removeUserThread(guildId, userId) {
 }
 
 // ==========================================
-// UPDATE SYSTEM
+// UPDATE CONFIG & HISTORY
 // ==========================================
 function getUpdateConfig(guildId) { return db.prepare('SELECT * FROM update_config WHERE guildId = ?').get(guildId) || null; }
 function setUpdateConfig(guildId, data) {
@@ -539,6 +583,7 @@ function clearUpdateHistory(guildId) { db.prepare('DELETE FROM update_history WH
 
 module.exports = {
     connectDB, getUser, saveUser, getAllUsers, resetUser,
+    getGlobalStat, setGlobalStat, incrementGlobalStat,
     getGuildConfig, setGuildConfig, updateLeaderboardMessage, getAllGuildConfigs, removeGuildConfig,
     getAfkCheckConfig, setAfkCheckConfig,
     getWelcomeConfig, setWelcomeConfig,
@@ -554,10 +599,5 @@ module.exports = {
     addUpdateHistory, getUpdateHistory,
     getUpdateHistoryById, updateHistoryEntry,
     deleteHistoryEntry, deleteUpdateHistoryByVersion,
-    clearUpdateHistory,
-
-    // ===== GACHA =====
-    incrementGachaRoll,
-    getGlobalStat,
-    incrementGlobalStat
+    clearUpdateHistory
 };
