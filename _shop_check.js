@@ -7,6 +7,7 @@ const slice = (a, b) => src.slice(a - 1, b).join('\n');
 
 const code = [
   slice(45, 256),   // EMOJI + SHOP_TOOLS + BLOCKS + SHOP_ITEMS + SHOP_LOCKS + SKILLS
+  slice(293, 297),  // SHOP_LOCKS
   slice(326, 486),  // helpers + getTotalWL
   slice(488, 557),  // spendWL
   slice(785, 1027), // shop embeds + shop buttons
