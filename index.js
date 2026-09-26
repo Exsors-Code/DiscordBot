@@ -789,7 +789,7 @@ function shopMainEmbed(ud) {
             { name: '🪨 Blocks', value: 'Beli block pakai WL', inline: true },
             { name: '🎒 Items', value: 'Buff, instant & gacha ticket', inline: true },
             { name: '🔒 Locks', value: 'Beli lock', inline: true },
-            { name: '💎 Total WL', value: `**${formatWL(getTotalLockValue(ud))}**\n> ${lockSummary(ud)}`, inline: true }
+            { name: `${EMOJI.wl} Total WL`, value: `**${formatWL(getTotalLockValue(ud))}**\n> ${lockSummary(ud)}`, inline: true }
         ).setFooter({ text: `Gems: ${Math.floor(ud.gems).toLocaleString()} • 1 ${EMOJI.dl} = 100 ${EMOJI.wl} • 1 ${EMOJI.bgl} = 10.000 ${EMOJI.wl} • 1 ${EMOJI.black} = 1.000.000 ${EMOJI.wl}` });
 }
 function shopMainButtons() {
@@ -864,7 +864,7 @@ function shopBlocksEmbed(ud, page = 'low') {
     }
     return new EmbedBuilder().setColor('#8B4513').setTitle(title)
         .setDescription(l.join('\n\n'))
-        .setFooter({ text: `${EMOJI.wl} WL kamu: ${formatWL(ud.locks.wl)} • Page: ${page}` });
+        .setFooter({ text: `${EMOJI.wl} Total WL kamu: ${formatWL(getTotalLockValue(ud))} • ${lockSummary(ud)} • Page: ${page}` });
 }
 
 function shopBlocksButtons(ud, page = 'low') {
@@ -1204,7 +1204,7 @@ function profileEmbed(ud) {
             { name: '🏆 Level', value: `${ud.level}`, inline: true },
             { name: '🛠️ Tool', value: t ? `${t.emoji} ${t.name}` : 'Tidak ada', inline: true },
             { name: '💰 Gems', value: Math.floor(ud.gems).toLocaleString(), inline: true },
-            { name: '💎 Total WL', value: `**${formatWL(tv)}**\n> ${lockSummary(ud)}`, inline: true },
+            { name: `${EMOJI.wl} Total WL`, value: `**${formatWL(tv)}**\n> ${lockSummary(ud)}`, inline: true },
             { name: '⭐ SP', value: `${ud.skillPoints}`, inline: true },
             { name: '🎰 Total Roll', value: `${ud.totalGachaRolls || 0}`, inline: true },
             { name: '💎 Booster', value:
