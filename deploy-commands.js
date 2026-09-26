@@ -8,7 +8,12 @@ let ADMIN_COMMANDS = [];
 let UTILITY_COMMANDS = [];
 let UPDATE_COMMANDS = [];
 let VOICE_COMMANDS = [];
+let TRADE_COMMANDS = [];
+let QUEST_COMMANDS = [];
 
+// ==========================================
+// LOAD MODULES
+// ==========================================
 try {
     const admin = require('./admin');
     ADMIN_COMMANDS = admin.ADMIN_COMMANDS || [];
@@ -33,6 +38,18 @@ try {
     console.log(`✅ voice.js loaded — ${VOICE_COMMANDS.length} commands`);
 } catch (e) { console.error('❌ voice.js:', e.message); }
 
+try {
+    const trade = require('./trade');
+    TRADE_COMMANDS = trade.TRADE_COMMANDS || [];
+    console.log(`✅ trade.js loaded — ${TRADE_COMMANDS.length} commands`);
+} catch (e) { console.error('❌ trade.js:', e.message); }
+
+try {
+    const quest = require('./dailyquest');
+    QUEST_COMMANDS = quest.QUEST_COMMANDS || [];
+    console.log(`✅ dailyquest.js loaded — ${QUEST_COMMANDS.length} commands`);
+} catch (e) { console.error('❌ dailyquest.js:', e.message); }
+
 // ==========================================
 // BASE COMMANDS
 // ==========================================
@@ -54,17 +71,7 @@ const baseCommands = [
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
         .addUserOption(o => o.setName('player').setDescription('Player yang mau direset').setRequired(true)).toJSON(),
 
-    // ===== /give =====
-    new SlashCommandBuilder()
-        .setName('give')
-        .setDescription('🎁 Beri item/gems/lock ke player (admin only)')
-        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-        .addUserOption(o => o.setName('user').setDescription('Target user').setRequired(true))
-        .addStringOption(o => o.setName('item').setDescription('Item (ketik untuk cari)').setRequired(true).setAutocomplete(true))
-        .addIntegerOption(o => o.setName('amount').setDescription('Jumlah (default: 1)').setRequired(false).setMinValue(1).setMaxValue(1000000000))
-        .toJSON(),
-
-    // ===== /afkcheck =====
+    // ===== AFK CHECK =====
     new SlashCommandBuilder().setName('afkcheck').setDescription('⏰ Cek online otomatis saat Auto Farm aktif')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .addSubcommand(s => s
@@ -76,6 +83,14 @@ const baseCommands = [
         )
         .addSubcommand(s => s.setName('status').setDescription('Lihat config AFK Check'))
         .addSubcommand(s => s.setName('disable').setDescription('Matikan fitur AFK Check'))
+        .toJSON(),
+
+    // ===== GIVE (owner only) =====
+    new SlashCommandBuilder().setName('give')
+        .setDescription('🎁 Give item/currency ke user (khusus Event Manager)')
+        .addUserOption(o => o.setName('user').setDescription('Target user').setRequired(true))
+        .addStringOption(o => o.setName('item').setDescription('Item yang mau dikasih (ketik untuk search)').setRequired(true).setAutocomplete(true))
+        .addIntegerOption(o => o.setName('amount').setDescription('Jumlah').setRequired(false).setMinValue(1).setMaxValue(1000000000))
         .toJSON()
 ];
 
@@ -87,7 +102,9 @@ const commands = [
     ...ADMIN_COMMANDS,
     ...UTILITY_COMMANDS,
     ...UPDATE_COMMANDS,
-    ...VOICE_COMMANDS
+    ...VOICE_COMMANDS,
+    ...TRADE_COMMANDS,
+    ...QUEST_COMMANDS
 ];
 
 // ==========================================
@@ -106,9 +123,12 @@ console.log(`   - Admin: ${ADMIN_COMMANDS.length}`);
 console.log(`   - Utility: ${UTILITY_COMMANDS.length}`);
 console.log(`   - Update: ${UPDATE_COMMANDS.length}`);
 console.log(`   - Voice: ${VOICE_COMMANDS.length}`);
+console.log(`   - Trade: ${TRADE_COMMANDS.length}`);
+console.log(`   - Quest: ${QUEST_COMMANDS.length}`);
 
 if (duplicates.length > 0) {
     console.error(`\n⚠️ DUPLIKAT COMMAND: ${duplicates.join(', ')}`);
+    console.error(`   Fix dulu sebelum deploy!`);
     process.exit(1);
 }
 
@@ -156,6 +176,23 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
         });
         console.log('='.repeat(60));
         console.log(`📊 Total: ${result.length} command + ${totalSub} subcommand`);
+
+        // ===== VERIFIKASI PENTING =====
+        console.log('\n🔍 VERIFIKASI:');
+        const checks = ['update', 'afkcheck', 'trade', 'quest', 'questadmin', 'give'];
+        for (const name of checks) {
+            const cmd = result.find(c => c.name === name);
+            if (cmd) {
+                const subs = (cmd.options || []).filter(o => o.type === 1).map(o => o.name);
+                if (subs.length > 0) {
+                    console.log(`   ✅ /${name} → [${subs.join(', ')}]`);
+                } else {
+                    console.log(`   ✅ /${name}`);
+                }
+            } else {
+                console.log(`   ❌ /${name} TIDAK DITEMUKAN`);
+            }
+        }
     } catch (e) {
         console.error('\n❌ GAGAL deploy:', e.code, e.message);
         if (e.code === 50001) console.error('💡 Missing Access — bot belum di-invite / CLIENT_ID salah.');
