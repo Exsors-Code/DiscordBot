@@ -667,7 +667,8 @@ function mainEmbed(ud) {
             value:
                 `🎉 **Event**  ·  ${ev.name}\n` +
                 `💰 **Gems**  ·  ${Math.floor(ud.gems).toLocaleString()}\n` +
-                `${EMOJI.wl} **WL**  ·  ${formatWL(ud.locks.wl)}\n` +
+                `${EMOJI.wl} **Total WL**  ·  ${formatWL(getTotalLockValue(ud))}\n` +
+                `🔒 **Lock**  ·  ${lockSummary(ud)}\n` +
                 `⛏️ **Mining**  ·  ${sel.emoji} ${sel.name} (${stockText})`,
             inline: false
         }
@@ -1003,10 +1004,12 @@ function shopLocksEmbed(ud) {
         const x = SHOP_LOCKS[k];
         l.push(`${x.emoji} **${x.name}** — ${x.price.toLocaleString()} ${EMOJI.gems}/lock\n> 📦 Kamu punya: **${formatWL(ud.locks[k])}**`);
     }
-    l.push(`\n**Auto-convert:** 100 ${EMOJI.wl} → 1 ${EMOJI.dl} → 1 ${EMOJI.bgl} → 1 ${EMOJI.black}`);
+    l.push(`\n**${EMOJI.wl} Total: ${formatWL(getTotalLockValue(ud))} WL**  ·  ${lockSummary(ud)}`);
+    l.push(`\n> 🔄 **Auto-convert:** 100 ${EMOJI.wl} → 1 ${EMOJI.dl} → 1 ${EMOJI.bgl} → 1 ${EMOJI.black}`);
+    l.push(`> 🛒 Semua lock dihitung sebagai WL saat belanja block.`);
     return new EmbedBuilder().setColor('#F1C40F').setTitle('🛒 Shop — Locks')
         .setDescription(l.join('\n\n'))
-        .setFooter({ text: `Gems kamu: ${Math.floor(ud.gems).toLocaleString()}` });
+        .setFooter({ text: `Gems kamu: ${Math.floor(ud.gems).toLocaleString()} • 1 ${EMOJI.dl} = 100 ${EMOJI.wl} • 1 ${EMOJI.bgl} = 10.000 ${EMOJI.wl}` });
 }
 function shopLocksButtons() {
     return [
