@@ -2242,13 +2242,13 @@ client.on('interactionCreate', async interaction => {
                 if (!b) return interaction.reply({ content: '❌ Block invalid.', ephemeral: true });
                 if (isUnlimited(k)) return interaction.reply({ content: `♾️ Unlimited!`, ephemeral: true });
 
-    // Hitung total WL
-    let totalWL;
-    if (b.blockPerWL >= 1) {
-        totalWL = qty / b.blockPerWL;
-    } else {
-        totalWL = qty * (1 / b.blockPerWL);
-    }
+                // Hitung total WL
+                let totalWL;
+                if (b.blockPerWL >= 1) {
+                    totalWL = qty / b.blockPerWL;
+                } else {
+                    totalWL = qty * (1 / b.blockPerWL);
+                }
 
     // Cek pakai TOTAL WL (WL + DL + BGL + BGLB)
     const userTotalWL = getTotalWL(ud);
