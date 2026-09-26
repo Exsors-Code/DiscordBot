@@ -451,6 +451,84 @@ function formatBlockPrice(b) {
 }
 
 // ==========================================
+// KONVERSI & SPEND WL (pakai semua lock)
+// ==========================================
+function getTotalWL(ud) {
+    return (ud.locks.wl * 1) + (ud.locks.dl * 100) + (ud.locks.bgl * 10000) + (ud.locks.bglb * 1000000);
+}
+
+function spendWL(ud, amount) {
+    const total = getTotalWL(ud);
+    if (total < amount) return false;
+
+    let wl = ud.locks.wl;
+    let dl = ud.locks.dl;
+    let bgl = ud.locks.bgl;
+    let bglb = ud.locks.bglb;
+    let remaining = amount;
+
+    // 1. Pakai WL dulu
+    if (wl >= remaining) {
+        wl -= remaining;
+        remaining = 0;
+    } else {
+        remaining -= wl;
+        wl = 0;
+    }
+
+    // 2. Pakai DL (1 DL = 100 WL)
+    if (remaining > 0) {
+        const need = Math.ceil(remaining / 100);
+        if (dl >= need) {
+            dl -= need;
+            const change = (need * 100) - remaining;
+            wl += change;
+            remaining = 0;
+        } else {
+            remaining -= dl * 100;
+            dl = 0;
+        }
+    }
+
+    // 3. Pakai BGL (1 BGL = 10.000 WL)
+    if (remaining > 0) {
+        const need = Math.ceil(remaining / 10000);
+        if (bgl >= need) {
+            bgl -= need;
+            const change = (need * 10000) - remaining;
+            dl += Math.floor(change / 100);
+            wl += change % 100;
+            remaining = 0;
+        } else {
+            remaining -= bgl * 10000;
+            bgl = 0;
+        }
+    }
+
+    // 4. Pakai BGLB (1 BGLB = 1.000.000 WL)
+    if (remaining > 0) {
+        const need = Math.ceil(remaining / 1000000);
+        if (bglb >= need) {
+            bglb -= need;
+            const change = (need * 1000000) - remaining;
+            bgl += Math.floor(change / 10000);
+            const sisaBGL = change % 10000;
+            dl += Math.floor(sisaBGL / 100);
+            wl += sisaBGL % 100;
+            remaining = 0;
+        } else {
+            return false;
+        }
+    }
+
+    ud.locks.wl = wl;
+    ud.locks.dl = dl;
+    ud.locks.bgl = bgl;
+    ud.locks.bglb = bglb;
+    return true;
+}
+
+// ==========================================
 // 📊 COUNT GUILD STATS
 // ==========================================
 async function countGuildStats(guildId) {
