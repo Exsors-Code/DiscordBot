@@ -2237,30 +2237,44 @@ client.on('interactionCreate', async interaction => {
 
             // ===== BELI BLOCK PAKAI WL =====
             if (interaction.customId.startsWith('modal_buyblock_')) {
-                const k = interaction.customId.replace('modal_buyblock_', '');
-                const b = SHOP_BLOCKS[k];
-                if (!b) return interaction.reply({ content: '❌ Block invalid.', ephemeral: true });
-                if (isUnlimited(k)) return interaction.reply({ content: `♾️ Unlimited!`, ephemeral: true });
+    const k = interaction.customId.replace('modal_buyblock_', '');
+    const b = SHOP_BLOCKS[k];
+    if (!b) return interaction.reply({ content: '❌ Block invalid.', ephemeral: true });
+    if (isUnlimited(k)) return interaction.reply({ content: `♾️ Unlimited!`, ephemeral: true });
 
-                let totalWL;
-                if (b.blockPerWL >= 1) {
-                    totalWL = qty / b.blockPerWL;
-                } else {
-                    totalWL = qty * (1 / b.blockPerWL);
-                }
+    // Hitung total WL
+    let totalWL;
+    if (b.blockPerWL >= 1) {
+        totalWL = qty / b.blockPerWL;
+    } else {
+        totalWL = qty * (1 / b.blockPerWL);
+    }
 
-                if (ud.locks.wl < totalWL) {
-                    const needGems = Math.ceil(totalWL * WL_TO_GEMS);
-                    return interaction.reply({
-                        content: `❌ WL kurang! Butuh **${formatWL(totalWL)} ${EMOJI.wl}** (~${needGems.toLocaleString()} gems), kamu punya **${formatWL(ud.locks.wl)} ${EMOJI.wl}**`,
-                        ephemeral: true
-                    });
-                }
+    // Cek pakai TOTAL WL (WL + DL + BGL + BGLB)
+    const userTotalWL = getTotalWL(ud);
+    if (userTotalWL < totalWL) {
+        const needGems = Math.ceil(totalWL * WL_TO_GEMS);
+        return interaction.reply({
+            content: `❌ WL kurang! Butuh **${formatWL(totalWL)} ${EMOJI.wl}** (~${needGems.toLocaleString()} gems)\n> Kamu punya: **${formatWL(userTotalWL)} ${EMOJI.wl}** total`,
+            ephemeral: true
+        });
+    }
 
-                ud.locks.wl -= totalWL;
-                ud.blocks[k] = (ud.blocks[k] || 0) + qty;
-                resp = `✅ Beli **${b.name} x${qty.toLocaleString()}**\n> Biaya: **${formatWL(totalWL)} ${EMOJI.wl}**\n> Sisa WL: ${formatWL(ud.locks.wl)}`;
-            }
+    // Bayar pakai spendWL (semua lock)
+    const paid = spendWL(ud, totalWL);
+    if (!paid) {
+        return interaction.reply({ content: `❌ Gagal bayar. Coba lagi.`, ephemeral: true });
+    }
+
+    ud.blocks[k] = (ud.blocks[k] || 0) + qty;
+
+    const totalWLAfter = getTotalWL(ud);
+    resp =
+        `✅ Beli **${b.name} x${qty.toLocaleString()}**\n` +
+        `> Biaya: **${formatWL(totalWL)} ${EMOJI.wl}**\n` +
+        `> Sisa: ${EMOJI.wl} ${formatWL(ud.locks.wl)} | ${EMOJI.dl} ${formatWL(ud.locks.dl)} | ${EMOJI.bgl} ${formatWL(ud.locks.bgl)} | ${EMOJI.black} ${formatWL(ud.locks.bglb)}\n` +
+        `> Total WL: **${formatWL(totalWLAfter)}**`;
+}
             // ===== BELI LOCK PAKAI GEMS =====
             else if (interaction.customId.startsWith('modal_buylock_')) {
                 const k = interaction.customId.replace('modal_buylock_', '');
