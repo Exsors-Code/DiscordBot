@@ -1,6 +1,6 @@
 // Read-only diagnostic: cek guild yg Accessible & apakah custom emoji bisa di-resolve.
 require('dotenv').config();
-const { REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes } = require('discord.js');
 
 const EMOJI = {
     lray: '1552901313992335390', ancesred: '1552900692895600640', bgl: '1552900717780406303',
@@ -13,24 +13,35 @@ const EMOJI = {
 (async () => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     const me = await rest.get(Routes.currentApplication());
-    console.log(`Bot: ${me.name}#${me.tag} (${me.id})\n`);
+    console.log(`Bot: ${me.name} (${me.id})\n`);
 
-    const guilds = await rest.get(Routes.oauth2CurrentUserGuilds());
-    console.log(`Guild accessible: ${guilds.length}\n`);
+    const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+    await client.login(process.env.DISCORD_TOKEN);
+    await clientonce_ready(client);
+    console.log(`Guild accessible: ${client.guilds.cache.size}\n`);
 
     const found = {};
-    for (const g of guilds) {
-        const emojis = await rest.get(Routes.guildEmojis(g.id));
-        for (const e of emojis) if (!found[e.id]) found[e.id] = { name: e.name, guild: `${g.name} (${g.id})` };
-        console.log(`  - ${g.name} (${g.id}): ${emojis.length} emoji`);
+    for (const g of client.guilds.cache.values()) {
+        const emojis = await g.emojis.fetch().catch(() => null);
+        const list = emojis ? [...emojis.values()] : [];
+        for (const e of list) if (!found[e.id]) found[e.id] = { name: e.name, guild: `${g.name} (${g.id})` };
+        console.log(`  - ${g.name} (${g.id}): ${list.length} emoji`);
     }
 
     console.log('\n=== HASIL PENCOCOKAN ===');
     let ok = 0, miss = 0;
     for (const [key, id] of Object.entries(EMOJI)) {
         if (found[id]) { console.log(`  OK    ${key.padEnd(9)} -> :${found[id].name}: di ${found[id].guild}`); ok++; }
-        else { console.log(`  MISS  ${key.padEnd(9)} -> id ${id} TIDAK ADA di guild accessible mana pun`); miss++; }
+        else { console.log(`  MISS  ${key.padEnd(9)} -> id ${id} TIDAK ADA di guild accessible`); miss++; }
     }
     console.log(`\nResolvable: ${ok} | Tidak resolve: ${miss}`);
-    if (miss > 0) console.log('=> Emoji ini akan muncul sebagai TEKS MENTAH <:nama:id> di Discord.');
+    if (miss > 0) console.log('=> Emoji ini muncul sebagai TEKS MENTAH <:nama:id> di Discord.');
+
+    client.destroy();
+    process.exit(0);
 })().catch(e => { console.error('Gagal:', e.message); process.exit(1); });
+
+function clientonce_ready(c) {
+    return new Promise(res => { if (c.isReady()) return res(); c.once('ready', () => res()); });
+}
+
