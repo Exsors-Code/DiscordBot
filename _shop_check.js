@@ -68,15 +68,34 @@ report('SHOP ITEMS', api.shopItemsEmbed(ud), api.shopItemsButtons());
 report('SHOP LOCKS', api.shopLocksEmbed(ud), api.shopLocksButtons());
 for (const p of ['low', 'pog', 'high']) report(`CHANGE BLOCK [${p}]`, api.changeBlockEmbed(ud, p), api.changeBlockButtons(ud, p));
 
-console.log('\n===== SPEND WL CHECK =====');
-for (const amt of [1234.5, 100, 500, 10300, 250000.25]) {
-  const t = { locks: { ...ud.locks } };
-  const ok = api.spendWL(t, amt);
-  console.log(`spend ${amt} -> ok=${ok} locks=${JSON.stringify(t.locks)} totalWL=${api.getTotalWL(t)} (before ${api.getTotalWL(ud)})`);
+console.log('\n===== RENDERED CONTENT =====');
+const views = {
+  'SHOP MAIN':   [api.shopMainEmbed(ud), null],
+  'SHOP TOOLS':  [api.shopToolsEmbed(ud), null],
+  'BLOCKS low':  [api.shopBlocksEmbed(ud, 'low'), null],
+  'BLOCKS high': [api.shopBlocksEmbed(ud, 'high'), null],
+  'SHOP ITEMS':  [api.shopItemsEmbed(ud), null],
+  'SHOP LOCKS':  [api.shopLocksEmbed(ud), null],
+};
+for (const [name, [emb]] of Object.entries(views)) {
+  const d = emb.toJSON();
+  console.log(`\n########## ${name} ##########`);
+  console.log('TITLE: ' + d.title);
+  if (d.fields && d.fields.length) for (const f of d.fields) console.log(`FIELD "${f.name}":\n${f.value}`);
+  console.log('DESC:\n' + (d.description || '(none)'));
+  console.log('FOOTER: ' + (d.footer?.text || '(none)'));
 }
 
-console.log('\n===== BLOCK PRICE LABELS =====');
-for (const k in api.SHOP_BLOCKS) {
-  const b = api.SHOP_BLOCKS[k];
-  console.log(`${k.padEnd(10)} blockPerWL=${String(b.blockPerWL).padEnd(7)} label=1 WL = ${b.blockPerWL >= 1 ? b.blockPerWL : 1 / b.blockPerWL} block`);
+console.log('\n===== BUTTON LABELS =====');
+const btnViews = {
+  'main': api.shopMainButtons(), 'tools': api.shopToolsButtons(),
+  'blocks_low': api.shopBlocksButtons(ud, 'low'), 'blocks_pog': api.shopBlocksButtons(ud, 'pog'),
+  'blocks_high': api.shopBlocksButtons(ud, 'high'), 'items': api.shopItemsButtons(),
+  'locks': api.shopLocksButtons(), 'changeblock_low': api.changeBlockButtons(ud, 'low'),
+  'changeblock_high': api.changeBlockButtons(ud, 'high'),
+};
+for (const [name, rows] of Object.entries(btnViews)) {
+  console.log(`\n-- ${name} (${rows.length} rows)`);
+  rows.forEach((r, i) => console.log(`  row${i}: ` + r.toJSON().components.map(c => `[${c.custom_id}|${c.label}|${c.disabled ? 'OFF' : 'ON'}]`).join(' ')));
 }
+
